@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import dev.omniwallet.app.ui.diagnostics.DiagnosticsScreen
 import dev.omniwallet.app.ui.wallet.WalletScreen
 
 object Routes {
@@ -17,6 +18,9 @@ fun OmniWalletApp() {
     NavHost(navController = navController, startDestination = Routes.WALLET) {
         composable(Routes.WALLET) {
             WalletScreen(onOpenDiagnostics = { navController.navigate(Routes.DIAGNOSTICS) })
+        }
+        composable(Routes.DIAGNOSTICS) {
+            DiagnosticsScreen(onBack = { navController.popBackStack() })
         }
     }
 }
