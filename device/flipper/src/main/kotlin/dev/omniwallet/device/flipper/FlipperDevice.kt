@@ -50,6 +50,12 @@ class FlipperDevice(
     context: Context,
     private val bluetoothDevice: BluetoothDevice,
     private val scope: CoroutineScope,
+    /**
+     * Taken from the advertisement rather than read back off the
+     * BluetoothDevice: `BluetoothDevice.getName` needs BLUETOOTH_CONNECT and
+     * throws without it, and the scan already told us the name for free.
+     */
+    override val displayName: String = bluetoothDevice.address,
     private val reconnectPolicy: ReconnectPolicy = ReconnectPolicy(),
     private val connectTimeoutMillis: Long = 20_000,
 ) : EmulatorDevice {
@@ -66,8 +72,6 @@ class FlipperDevice(
     override val id: String = bluetoothDevice.address
 
     override val kind: DeviceKind = DeviceKind.FLIPPER_ZERO
-
-    override val displayName: String = runCatching { bluetoothDevice.name }.getOrNull() ?: id
 
     override val capabilities: Set<Protocol> = setOf(
         Protocol.NFC,

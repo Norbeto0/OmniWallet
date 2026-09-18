@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import no.nordicsemi.android.ble.BleManager
+import no.nordicsemi.android.ble.data.Data
 import no.nordicsemi.android.ble.ktx.suspend
 
 /**
@@ -134,16 +135,21 @@ class FlipperBleManager(context: Context) : BleManager(context) {
         }.enqueue()
 
         rpcStatusCharacteristic?.let { status ->
-            setNotificationCallback(status).with { _, data ->
-                _rpcActive.value = data.getIntValue(android.bluetooth.BluetoothGattCharacteristic.FORMAT_UINT8, 0) ==
-                    FlipperBleProfile.RpcStatus.ACTIVE
-            }
+            setNotificationCallback(status).with { _, data -> applyRpcStatus(data) }
             enableNotifications(status).enqueue()
-            readCharacteristic(status).with { _, data ->
-                _rpcActive.value = data.getIntValue(android.bluetooth.BluetoothGattCharacteristic.FORMAT_UINT8, 0) ==
-                    FlipperBleProfile.RpcStatus.ACTIVE
-            }.enqueue()
+            readCharacteristic(status).with { _, data -> applyRpcStatus(data) }.enqueue()
         }
+    }
+
+    /**
+     * The firmware declares this characteristic as `sizeof(uint32_t)` and
+     * writes a `SerialServiceRpcStatus` into it with no byte-order conversion,
+     * so it is a little-endian uint32 -- not the single byte its 0/1 range
+     * might suggest.
+     */
+    private fun applyRpcStatus(data: Data) {
+        val value = data.getIntValue(Data.FORMAT_UINT32_LE, 0) ?: return
+        _rpcActive.value = value == FlipperBleProfile.RpcStatus.ACTIVE
     }
 
     private fun emitCredit(raw: ByteArray) {

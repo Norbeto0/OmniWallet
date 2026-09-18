@@ -41,6 +41,11 @@ import java.util.UUID
  */
 class ChameleonDevice(
     private val bluetoothDevice: BluetoothDevice,
+    /**
+     * From the advertisement, not `BluetoothDevice.getName`, which needs
+     * BLUETOOTH_CONNECT and throws without it.
+     */
+    override val displayName: String = bluetoothDevice.address,
 ) : EmulatorDevice {
 
     companion object {
@@ -55,9 +60,6 @@ class ChameleonDevice(
     override val id: String = bluetoothDevice.address
 
     override val kind: DeviceKind = DeviceKind.CHAMELEON_ULTRA
-
-    override val displayName: String =
-        runCatching { bluetoothDevice.name }.getOrNull() ?: id
 
     /**
      * The Chameleon covers exactly the cases a phone cannot: Mifare Classic and

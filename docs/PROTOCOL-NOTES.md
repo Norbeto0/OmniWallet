@@ -60,6 +60,22 @@ From `serial_service.c` (`ble_svc_serial_set_callbacks`,
 to a running total would steadily overestimate its allowance and overrun the
 device. `FlowControlGate.onCreditReported` assigns; a test pins that behaviour.
 
+### RPC status characteristic
+
+Declared `sizeof(uint32_t)` in the characteristic table, and
+`ble_svc_serial_update_rpc_char` writes the `SerialServiceRpcStatus` enum
+straight through:
+
+```c
+ble_gatt_characteristic_update(svc_handle, &chars[...Status], &status);
+```
+
+No byte-order conversion — note the contrast with flow control, which *does*
+apply `REVERSE_BYTES_U32`. So this is a **little-endian uint32**, not the single
+byte its 0/1 range might suggest, and it is read with `Data.FORMAT_UINT32_LE`.
+Reading it as `FORMAT_UINT8` happens to produce the right answer on a
+little-endian MCU, which is exactly what makes it worth writing down.
+
 ### Framing
 
 `varint32(main.byteSize) + main.bytes`, matching

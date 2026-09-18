@@ -168,7 +168,7 @@ class DiagnosticsViewModel @Inject constructor(
 
         val remote = adapter.getRemoteDevice(discovered.address)
 
-        val flipper = FlipperDevice(context, remote, viewModelScope)
+        val flipper = FlipperDevice(context, remote, viewModelScope, discovered.displayName)
         device = flipper
         _state.update { it.copy(connectedTo = discovered.displayName) }
 
