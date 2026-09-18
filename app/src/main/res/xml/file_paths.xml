@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Diagnostic log exports: the only way a hardware failure reaches the
+         developer as evidence rather than a description. -->
+    <cache-path name="diagnostics" path="diagnostics/" />
+</paths>
