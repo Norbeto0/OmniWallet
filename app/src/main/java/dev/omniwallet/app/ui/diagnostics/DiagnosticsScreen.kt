@@ -228,7 +228,14 @@ private fun RpcCard(state: DiagnosticsUiState, viewModel: DiagnosticsViewModel) 
 
         if (state.deviceInfo.isNotEmpty()) {
             HorizontalDivider()
-            listOf("firmware_origin", "firmware_version", "hardware_name", "protobuf_version_major", "protobuf_version_minor")
+            listOf(
+                "firmware_origin_fork",
+                "firmware_version",
+                "hardware_name",
+                "hardware_color",
+                "protobuf_version_major",
+                "protobuf_version_minor",
+            )
                 .mapNotNull { key -> state.deviceInfo[key]?.let { key to it } }
                 .forEach { (k, v) -> Text("$k = $v", style = MaterialTheme.typography.bodySmall) }
         }

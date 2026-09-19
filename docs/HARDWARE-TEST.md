@@ -27,20 +27,18 @@ diagnosis.
 > Below Android 12 the location permission is not optional: without it the
 > platform returns **zero** scan results and reports no error at all.
 
-## 2. Scan — the first real unknown
+## 2. Scan
 
 - Leave the mode on **Known devices** and tap **Scan**.
 - **Expected:** your Flipper appears within a few seconds, named, with an RSSI
-  and a service list including `8fe5b3d5-...`.
+  and a service list containing `0000308X-0000-1000-8000-00805f9b34fb`, where
+  the last digit is your unit's colour code.
 
-**If it does not appear**, this is the open question flagged in the protocol
-notes: it is unconfirmed whether a Flipper always advertises its serial service
-UUID. Do this:
-
-1. Switch to **Everything** and scan again.
-2. Find your Flipper in the list.
-3. **Export the log and send it.** The advertised service list in that log
-   settles whether filtered scanning can work, and what to filter on instead.
+> The first hardware run proved that a Flipper advertises a 16-bit UUID of
+> `0x3080 | hw_color`, not its serial service. Filtered scanning used to match
+> nothing at all; it now filters on that pattern with the colour masked out. If
+> your Flipper still does not appear here, switch to **Everything**, find it,
+> and send the log — the advertised service list is what settles it.
 
 ## 3. Connect and pair
 
@@ -81,24 +79,30 @@ the other two.
 With the state at `ready`:
 
 1. **Ping** → a round-trip time appears (single-digit to low tens of ms).
-2. **Device info** → key/value pairs including `firmware_origin` and
-   `hardware_name`. Please note what `firmware_origin` says.
+2. **Device info** → key/value pairs including `firmware_origin_fork`,
+   `hardware_name` and `hardware_color`. The header line should now name your
+   firmware rather than printing `firmware=?`.
 3. **List files** → counts the saved items across `/ext/nfc`, `/ext/lfrfid`,
    `/ext/subghz`, `/ext/infrared`, `/ext/ibutton`.
 
-## 6. Emulation — the one that proves the whole chain
+## 6. Emulation — including the two fixes
 
 1. In the file list, tap **Emulate** on a saved NFC or RFID item.
-2. **Expected:** the Flipper switches to that app with your file loaded.
-3. **Please report exactly what the Flipper does**: does it start emitting on
-   its own, or does it open the file and wait for you to press a button?
-
-That question is genuinely unresolved. `AppStartRequest` launching the app with
-the file argument is confirmed from firmware; what the app does *next* is not.
-If it waits, the fix is an `AppButtonPressRequest` follow-up, and knowing which
-saves a guess.
-
-4. Tap **Stop emulation** → the Flipper should return to its menu.
+   **Expected:** the Flipper switches to that app with your card loaded and
+   starts emitting straight away.
+2. **Now tap Emulate on a *different* card, without disconnecting.**
+   **Expected:** it switches cleanly to the second card.
+   This used to fail every time with `ERROR_APP_SYSTEM_LOCKED`, because the
+   Flipper runs one app at a time and nothing closed the first one. The app now
+   closes the running app before starting the next.
+3. Tap **Stop emulation**, and **watch the Flipper's screen**.
+   **Expected:** it actually leaves the app and returns to its menu.
+   This is the other fix worth your attention. `AppExitRequest` cannot close an
+   app that was launched with a file path — it answers `ERROR_APP_NOT_RUNNING`
+   and the app keeps running — so the app previously reported "stopped" while
+   the Flipper carried on emulating. It now backs out with BACK presses and
+   checks the loader lock, and will report an error rather than claim success if
+   the app will not close.
 
 ## 7. Manual app start — only if step 6 failed
 
@@ -111,6 +115,18 @@ The five correct names are `NFC`, `125 kHz RFID`, `Sub-GHz`, `Infrared`,
 `iButton` — case-sensitive, spaces included. If `NFC` fails but `nfc` works,
 your firmware builds that app as internal rather than external, which is worth
 knowing.
+
+## What changed since the last build
+
+Five fixes, four of them driven by your log:
+
+| Fix | Symptom before |
+|---|---|
+| Scan filter uses the advertised 16-bit UUID | filtered scan found nothing |
+| Close the running app before starting another | second card never worked |
+| Stop backs out with BACK and verifies the lock | claimed "stopped" while still emulating |
+| RPC status read from byte 0 | `rpcActive` always false |
+| `firmware_origin_fork` key | header printed `firmware=?` |
 
 ## Finally
 

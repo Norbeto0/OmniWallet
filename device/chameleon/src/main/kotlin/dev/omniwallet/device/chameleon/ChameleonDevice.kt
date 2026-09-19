@@ -11,6 +11,7 @@ import dev.omniwallet.core.domain.EmulatorDevice
 import dev.omniwallet.core.domain.Protocol
 import dev.omniwallet.core.domain.RemoteCredential
 import dev.omniwallet.protocol.chameleon.CHAMELEON_SLOT_COUNT
+import dev.omniwallet.transport.ble.ScanTarget
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,6 +56,17 @@ class ChameleonDevice(
         val NUS_TX_CHARACTERISTIC: UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e")
 
         const val SLOT_COUNT = CHAMELEON_SLOT_COUNT
+
+        /**
+         * Discovery pattern. Unlike the Flipper, the Chameleon advertises the
+         * same 128-bit service it serves, so no mask is needed.
+         *
+         * Unverified against hardware -- no Chameleon has been tested yet.
+         */
+        val SCAN_TARGET: ScanTarget = ScanTarget(
+            kind = DeviceKind.CHAMELEON_ULTRA,
+            serviceUuid = NORDIC_UART_SERVICE,
+        )
     }
 
     override val id: String = bluetoothDevice.address

@@ -41,5 +41,22 @@ object FlipperBleProfile {
     object RpcStatus {
         const val NOT_ACTIVE = 0
         const val ACTIVE = 1
+
+        /**
+         * Decode the characteristic value, reading the **first byte only**.
+         *
+         * The firmware declares this characteristic `sizeof(uint32_t)`, which
+         * invites treating it as a uint32. Hardware disagrees: a live session
+         * reads `01-14-6E-0B`, where byte 0 is the status and bytes 1-3 are
+         * whatever sat beside the enum in memory, because the fixed four-byte
+         * length over-reads a smaller value. Taken as a little-endian uint32
+         * that is 0x0B6E1401, and a perfectly healthy session reports itself
+         * inactive.
+         *
+         * Do not widen this on the strength of the declared length. A test
+         * pins the observed bytes.
+         */
+        fun isActive(raw: ByteArray): Boolean =
+            raw.isNotEmpty() && (raw[0].toInt() and 0xFF) == ACTIVE
     }
 }

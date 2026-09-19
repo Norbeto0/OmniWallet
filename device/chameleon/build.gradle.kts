@@ -17,8 +17,8 @@ android {
 
 dependencies {
     api(project(":core:domain"))
-    implementation(project(":transport:ble"))
-    implementation(project(":protocol:chameleon"))
+    api(project(":transport:ble"))
+    api(project(":protocol:chameleon"))
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.kotlinx.coroutines.android)

@@ -6,11 +6,10 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import dev.omniwallet.core.domain.DeviceKind
 import dev.omniwallet.device.chameleon.ChameleonDevice
 import dev.omniwallet.device.flipper.FlipperDevice
 import dev.omniwallet.transport.ble.BleScanner
-import java.util.UUID
+import dev.omniwallet.transport.ble.ScanTarget
 import javax.inject.Singleton
 
 @Module
@@ -18,23 +17,25 @@ import javax.inject.Singleton
 object BleModule {
 
     /**
-     * The service UUIDs worth scanning for, and what each one means.
+     * What discovery looks for.
      *
      * Assembled here rather than inside the scanner so `:transport:ble` stays
-     * device-agnostic: adding a third backend is a line in this map, not a
-     * change to the transport.
+     * device-agnostic: adding a third backend is a line in this list, not a
+     * change to the transport. Each device contributes its own pattern, since
+     * only the backend knows what its hardware advertises -- and for the
+     * Flipper that is emphatically not the service it later serves.
      */
     @Provides
     @Singleton
-    fun provideKnownServices(): Map<UUID, @JvmSuppressWildcards DeviceKind> = mapOf(
-        FlipperDevice.SERIAL_SERVICE to DeviceKind.FLIPPER_ZERO,
-        ChameleonDevice.NORDIC_UART_SERVICE to DeviceKind.CHAMELEON_ULTRA,
+    fun provideScanTargets(): List<@JvmSuppressWildcards ScanTarget> = listOf(
+        FlipperDevice.SCAN_TARGET,
+        ChameleonDevice.SCAN_TARGET,
     )
 
     @Provides
     @Singleton
     fun provideScanner(
         @ApplicationContext context: Context,
-        knownServices: Map<UUID, @JvmSuppressWildcards DeviceKind>,
-    ): BleScanner = BleScanner(context, knownServices)
+        targets: List<@JvmSuppressWildcards ScanTarget>,
+    ): BleScanner = BleScanner(context, targets)
 }

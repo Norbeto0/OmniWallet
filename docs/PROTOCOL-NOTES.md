@@ -64,17 +64,22 @@ device. `FlowControlGate.onCreditReported` assigns; a test pins that behaviour.
 
 Declared `sizeof(uint32_t)` in the characteristic table, and
 `ble_svc_serial_update_rpc_char` writes the `SerialServiceRpcStatus` enum
-straight through:
+straight through with no byte-order conversion.
 
-```c
-ble_gatt_characteristic_update(svc_handle, &chars[...Status], &status);
+That invites reading it as a little-endian uint32. **Do not.** A live Momentum
+session returns:
+
+```
+01-14-6E-0B
 ```
 
-No byte-order conversion — note the contrast with flow control, which *does*
-apply `REVERSE_BYTES_U32`. So this is a **little-endian uint32**, not the single
-byte its 0/1 range might suggest, and it is read with `Data.FORMAT_UINT32_LE`.
-Reading it as `FORMAT_UINT8` happens to produce the right answer on a
-little-endian MCU, which is exactly what makes it worth writing down.
+Byte 0 is the status (`01` = active); bytes 1-3 are whatever sat beside the enum
+in memory, because the fixed four-byte length over-reads a smaller value. As a
+little-endian uint32 those bytes are `0x0B6E1401`, and a perfectly healthy
+session reports itself inactive — which is exactly what an earlier build did.
+
+Read byte 0 only. `FlipperBleProfile.RpcStatus.isActive` does this and a test
+pins the observed bytes.
 
 ### Framing
 
@@ -115,6 +120,55 @@ name works**, case-sensitively. Names are from each app's `application.fam`:
 Plausible guesses — `Nfc`, `LfRfid`, `IButton` — all fail as
 `ERROR_APP_CANT_START`. The client retries with `appId` on that error, which
 costs one round trip and covers a custom firmware that renames an app.
+
+### Advertising — what discovery must filter on
+
+A Flipper does **not** advertise its serial service. From
+`targets/f7/ble_glue/profiles/serial_profile.c`:
+
+```c
+.Service_UUID_16 = 0x3080,
+...
+config->adv_service.Service_UUID_16 |= furi_hal_version_get_hw_color();
+```
+
+It advertises a **16-bit** UUID of `0x3080 | hw_color`, expanded into the
+Bluetooth base UUID. `FuriHalVersionColor` runs `0x00`–`0x03` (unknown, black,
+white, transparent), so the advertised value varies per device. A unit with
+`hardware_color = 2` advertises:
+
+```
+00003082-0000-1000-8000-00805f9b34fb
+```
+
+Confirmed on hardware. The 128-bit serial service appears only after connecting,
+so **filtering a scan on it matches nothing at all** — which is precisely what an
+earlier build did, silently.
+
+Filter instead on `00003080-0000-1000-8000-00805f9b34fb` with mask
+`fffffff0-ffff-ffff-ffff-ffffffffffff`. Momentum's `serial_profile.c` uses the
+identical formula, so one filter covers every firmware and colour.
+
+### Application lifecycle — starting and stopping
+
+Three rules, all confirmed on hardware:
+
+1. **`AppStartRequest` with a file path starts emulation immediately.** The app
+   opens with the card loaded and begins emitting; no button press is needed.
+2. **Only one app runs at a time.** Starting another while one is running
+   returns `ERROR_APP_SYSTEM_LOCKED` (`LoaderStatusErrorAppStarted`). Switching
+   cards therefore requires closing the running app first.
+3. **`AppExitRequest` cannot close a file-launched app.** Its handler only acts
+   when `rpc_app->callback` is set, which happens solely for apps started in RPC
+   mode (`args == "RPC"`). Anything else answers `ERROR_APP_NOT_RUNNING` **and
+   keeps running** — observed directly: the Flipper stayed in the NFC app while
+   the call "succeeded".
+
+So closing an app means backing out of it: `PB_Gui.SendInputEventRequest` with
+`BACK`, sent as `PRESS` → `SHORT` → `RELEASE`. Use `app_lock_status_request` as
+the termination condition; its handler returns `loader_is_locked(loader)`, the
+very lock that produces `ERROR_APP_SYSTEM_LOCKED`, so it is a real check rather
+than a guess at how many screens deep the app is.
 
 ### Firmware compatibility
 
@@ -181,15 +235,38 @@ Transport and codec confirmed; the slot workflow is M5 work.
   `GET_SLOT_INFO=1019`, `GET_ENABLED_SLOTS=1023`, `GET_DEVICE_MODEL=1033`,
   `MF1_WRITE_EMU_BLOCK_DATA=4000`, `HF14A_SET_ANTI_COLL_DATA=4001`.
 
+## Confirmed on hardware
+
+First hardware session: Pixel 10 Pro (API 37) and a Flipper Zero on Momentum
+`mntm-012`, protobuf 0.25.
+
+| | Result |
+|---|---|
+| Bonding, connection, service discovery | works |
+| MTU | 414 negotiated from a 517 request |
+| TX indications | works — notifications would have delivered nothing |
+| Flow control | initial read `00-00-04-00` = 1024, big-endian decode confirmed |
+| Ping round trip | 54–71 ms |
+| `device_info` | 60 entries |
+| `storage_list` | all five directories |
+| App names | `NFC` resolved verbatim |
+| Emulation | starts immediately on `AppStartRequest` |
+
+Two questions this file previously listed as open are now settled, above:
+a Flipper does **not** advertise its serial service UUID, and emulation does
+**not** wait for a button press.
+
+`device_info` key names are worth noting: there is no `firmware_origin`.
+Momentum reports `firmware_origin_fork` (`Momentum`) and `firmware_origin_git`.
+
 ## Not confirmed — do not assume
 
-1. **Whether a Flipper always advertises its serial service UUID**, or only
-   when RPC is available. If it does not, filtered scanning will miss it. The
-   diagnostics screen has an unfiltered scan mode precisely so this can be
-   settled from a real device.
-2. **Whether each app begins emitting on launch, or waits for a button press.**
-   `AppStartRequest` launching the app with the file as argument is confirmed;
-   what the app does next is not. If it waits, `AppButtonPressRequest` (field
-   49) is the follow-up, and `startEmulation` absorbs it per protocol.
-3. **The Chameleon slot workflow** beyond the codec — deliberately unresearched
-   until M5.
+1. **The Chameleon Ultra end to end.** Its transport and frame codec are read
+   from firmware and unit-tested, but no Chameleon has been connected. The
+   scan target for it is a reasonable inference, not an observation.
+2. **How many BACK presses various apps need.** Bounded and checked against
+   `app_lock_status` rather than assumed, so a deeper app costs round trips
+   rather than correctness.
+3. **`storage_list` is not recursive.** Sub-GHz files inside `Tesla/`,
+   `remote/` and `playlist/` are not listed. Recursive listing belongs with the
+   wallet UI in M3.

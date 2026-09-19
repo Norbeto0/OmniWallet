@@ -14,10 +14,12 @@ import dev.omniwallet.core.domain.Protocol
 import dev.omniwallet.core.domain.RemoteCredential
 import dev.omniwallet.protocol.flipper.FlipperApp
 import dev.omniwallet.protocol.flipper.FlipperBleProfile
+import com.flipperdevices.protobuf.CommandStatus
 import dev.omniwallet.protocol.flipper.FlipperRpcClient
 import dev.omniwallet.protocol.flipper.FlipperRpcSession
 import dev.omniwallet.transport.ble.BondMonitor
 import dev.omniwallet.transport.ble.ReconnectPolicy
+import dev.omniwallet.transport.ble.ScanTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -62,11 +64,35 @@ class FlipperDevice(
 
     companion object {
         /**
-         * Re-exported so callers can register this device for discovery
-         * without depending on `:protocol:flipper`. Mirrors how
-         * `ChameleonDevice` exposes its NUS UUID.
+         * The 128-bit serial service, available only once connected.
+         *
+         * Deliberately *not* what discovery filters on -- see
+         * [ADVERTISED_SERVICE].
          */
         val SERIAL_SERVICE: UUID = FlipperBleProfile.SERVICE
+
+        /**
+         * What a Flipper actually puts in its advertisement.
+         *
+         * `targets/f7/ble_glue/profiles/serial_profile.c` sets a 16-bit service
+         * UUID of `0x3080 | furi_hal_version_get_hw_color()`, so the value
+         * differs per device colour -- a white unit (`hw_color = 2`) advertises
+         * `0x3082`. The 128-bit serial service never appears in the
+         * advertisement at all, so filtering on it finds nothing.
+         *
+         * `FuriHalVersionColor` runs 0x00..0x03, so masking the low four bits
+         * matches every Flipper with room to spare. Momentum uses the identical
+         * formula.
+         */
+        val ADVERTISED_SERVICE: UUID = ScanTarget.shortUuid(0x3080)
+        val ADVERTISED_SERVICE_MASK: UUID = ScanTarget.shortUuidMask(wildcardBits = 4)
+
+        /** Discovery pattern for a Flipper Zero. */
+        val SCAN_TARGET: ScanTarget = ScanTarget(
+            kind = DeviceKind.FLIPPER_ZERO,
+            serviceUuid = ADVERTISED_SERVICE,
+            mask = ADVERTISED_SERVICE_MASK,
+        )
     }
 
     override val id: String = bluetoothDevice.address
@@ -319,8 +345,26 @@ class FlipperDevice(
         val app = FlipperApp.forPath(location.path)
             ?: FlipperApp.forProtocol(credential.protocol)
 
+        // The Flipper runs one app at a time, so a second credential fails with
+        // ERROR_APP_SYSTEM_LOCKED unless whatever is running is closed first.
+        // Clearing up front is cheaper than provoking the error, and this is
+        // the natural place for it: switching cards must look like one action
+        // from above, not like "stop, then start".
+        if (!rpc.exitRunningApp()) {
+            note("warning: an app is still running; the start may be refused")
+        }
+
         note("starting ${app.appName} with ${location.path}")
-        rpc.startApp(app, location.path)
+        try {
+            rpc.startApp(app, location.path)
+        } catch (e: FlipperRpcSession.RpcException) {
+            if (e.status != CommandStatus.ERROR_APP_SYSTEM_LOCKED) throw e
+            // Something grabbed the lock in between. Clear it once more and
+            // retry; a second failure is real and propagates.
+            note("device was busy; closing the running app and retrying once")
+            rpc.exitRunningApp()
+            rpc.startApp(app, location.path)
+        }
 
         return EmulationHandle(
             credentialId = credential.id,
@@ -331,7 +375,16 @@ class FlipperDevice(
 
     override suspend fun stopEmulation(handle: EmulationHandle) {
         note("stopping emulation")
-        requireClient().exitApp()
+        if (!requireClient().exitRunningApp()) {
+            // Reporting success here would be a lie the UI then repeats: the
+            // Flipper would still be emulating while the app said it had
+            // stopped. That is exactly what the first hardware run did.
+            throw DeviceException.RemoteError(
+                code = "APP_STILL_RUNNING",
+                detail = "could not close the running app; it may still be emulating",
+            )
+        }
+        note("emulation stopped; no app running")
     }
 
     /** Device info as reported over RPC, for diagnostics and firmware checks. */

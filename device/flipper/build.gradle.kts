@@ -17,8 +17,8 @@ android {
 
 dependencies {
     api(project(":core:domain"))
-    implementation(project(":transport:ble"))
-    implementation(project(":protocol:flipper"))
+    api(project(":transport:ble"))
+    api(project(":protocol:flipper"))
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.kotlinx.coroutines.android)

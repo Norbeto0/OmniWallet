@@ -16,6 +16,7 @@ import dev.omniwallet.device.flipper.FlipperDevice
 import dev.omniwallet.transport.ble.BlePermissions
 import dev.omniwallet.transport.ble.BleScanner
 import dev.omniwallet.transport.ble.DiscoveredDevice
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -139,6 +140,10 @@ class DiagnosticsViewModel @Inject constructor(
                     }
                 }
             }.onFailure {
+                // Stopping a scan cancels this coroutine, and cancellation is
+                // not a failure -- reporting it as one filled the log with
+                // "scan failed" lines after every ordinary stop.
+                if (it is CancellationException) throw it
                 log("scan failed: ${it.message}")
                 _state.update { state -> state.copy(scanning = false, error = it.message) }
             }
@@ -235,7 +240,10 @@ class DiagnosticsViewModel @Inject constructor(
     fun loadDeviceInfo() = withDevice { flipper ->
         val info = flipper.deviceInfo()
         _state.update { it.copy(deviceInfo = info) }
-        log("device_info: ${info.size} entries; firmware=${info["firmware_origin"] ?: "?"}")
+        log(
+            "device_info: ${info.size} entries; " +
+                "firmware=${info["firmware_origin_fork"] ?: info["firmware_version"] ?: "official"}",
+        )
     }
 
     fun listCredentials() = withDevice { flipper ->

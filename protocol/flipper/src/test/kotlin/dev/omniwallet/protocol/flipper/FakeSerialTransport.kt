@@ -29,8 +29,22 @@ class FakeSerialTransport(
     /** Every chunk concatenated, i.e. the raw outbound byte stream. */
     val writtenBytes: ByteArray get() = writes.fold(ByteArray(0)) { a, b -> a + b }
 
+    /**
+     * Optional auto-responder. When set, each complete outbound message is
+     * decoded and handed over, and whatever it returns is delivered as the
+     * reply -- which is what lets a test drive a whole request/response
+     * conversation without hand-feeding every frame.
+     */
+    var responder: (suspend (Main) -> List<Main>)? = null
+
+    private val outbound = FlipperFrameAccumulator()
+
     override suspend fun write(bytes: ByteArray) {
         writes += bytes
+        val respond = responder ?: return
+        outbound.feed(bytes).forEach { body ->
+            respond(Main.ADAPTER.decode(body)).forEach { reply -> deliver(reply) }
+        }
     }
 
     suspend fun reportCredit(bytes: Int) = _creditReports.emit(bytes)

@@ -3,7 +3,11 @@ package dev.omniwallet.protocol.flipper
 import com.flipperdevices.protobuf.CommandStatus
 import com.flipperdevices.protobuf.Main
 import com.flipperdevices.protobuf.app.AppExitRequest
+import com.flipperdevices.protobuf.app.LockStatusRequest
 import com.flipperdevices.protobuf.app.StartRequest
+import com.flipperdevices.protobuf.screen.InputKey
+import com.flipperdevices.protobuf.screen.InputType
+import com.flipperdevices.protobuf.screen.SendInputEventRequest
 import com.flipperdevices.protobuf.storage.File
 import com.flipperdevices.protobuf.storage.ListRequest
 import com.flipperdevices.protobuf.system.DeviceInfoRequest
@@ -72,6 +76,30 @@ class FlipperRpcClient(private val session: FlipperRpcSession) {
     }
 
     /**
+     * Whether an application currently holds the loader lock.
+     *
+     * The handler returns `loader_is_locked(loader)` (`rpc_app.c`), which is
+     * exactly the condition that makes [startApp] fail with
+     * `ERROR_APP_SYSTEM_LOCKED`. That makes it a real termination condition for
+     * [exitRunningApp] rather than a guess at how many screens deep an app is.
+     */
+    suspend fun isAppRunning(): Boolean {
+        val reply = session.request(Main(app_lock_status_request = LockStatusRequest()))
+        return reply.app_lock_status_response?.locked == true
+    }
+
+    /** Deliver one button press, as the real input stack would emit it. */
+    suspend fun pressButton(key: InputKey) {
+        // A physical press emits PRESS, then SHORT, then RELEASE. Sending only
+        // SHORT leaves apps that track press/release state confused.
+        listOf(InputType.PRESS, InputType.SHORT, InputType.RELEASE).forEach { type ->
+            session.request(
+                Main(gui_send_input_event_request = SendInputEventRequest(key = key, type = type)),
+            )
+        }
+    }
+
+    /**
      * Start [app] with [args], which for emulation is the saved file's path.
      *
      * Falls back to the app's id if the display name is rejected. External apps
@@ -92,14 +120,42 @@ class FlipperRpcClient(private val session: FlipperRpcSession) {
         session.request(Main(app_start_request = StartRequest(name = name, args = args)))
     }
 
-    /** Ask the running app to exit, which is how emulation is stopped. */
-    suspend fun exitApp() {
-        try {
-            session.request(Main(app_exit_request = AppExitRequest()))
-        } catch (e: FlipperRpcSession.RpcException) {
-            // Already closed -- treat stopping a stopped app as success so the
-            // UI cannot get stuck showing "emulating".
-            if (e.status != CommandStatus.ERROR_APP_NOT_RUNNING) throw e
+    /**
+     * Close whatever application is running, by backing out of it.
+     *
+     * [AppExitRequest] cannot do this. Its handler only acts when the app
+     * registered RPC callbacks, which happens solely for apps launched in RPC
+     * mode (`args == "RPC"`); anything started with a file path answers
+     * `ERROR_APP_NOT_RUNNING` and keeps running. Confirmed on hardware: the
+     * Flipper stayed in the NFC app while the exit call "succeeded".
+     *
+     * So back out with BACK presses instead, checking [isAppRunning] after each
+     * one. The loop is bounded because an app could sit behind more screens
+     * than expected, or refuse to leave at all.
+     *
+     * @return true if nothing is running by the end.
+     */
+    suspend fun exitRunningApp(maxPresses: Int = DEFAULT_MAX_BACK_PRESSES): Boolean {
+        if (!isAppRunning()) return true
+
+        repeat(maxPresses) {
+            // Ask politely first: an app started in RPC mode does honour this,
+            // and it is one round trip to find out.
+            runCatching { session.request(Main(app_exit_request = AppExitRequest())) }
+            if (!isAppRunning()) return true
+
+            pressButton(InputKey.BACK)
+            if (!isAppRunning()) return true
         }
+        return !isAppRunning()
     }
+
+    companion object {
+        /**
+         * Enough to back out of a nested app screen, few enough that a stuck
+         * app fails quickly rather than hammering the device.
+         */
+        const val DEFAULT_MAX_BACK_PRESSES = 4
+    }
+
 }

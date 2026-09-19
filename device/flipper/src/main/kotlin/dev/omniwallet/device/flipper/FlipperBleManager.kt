@@ -141,15 +141,10 @@ class FlipperBleManager(context: Context) : BleManager(context) {
         }
     }
 
-    /**
-     * The firmware declares this characteristic as `sizeof(uint32_t)` and
-     * writes a `SerialServiceRpcStatus` into it with no byte-order conversion,
-     * so it is a little-endian uint32 -- not the single byte its 0/1 range
-     * might suggest.
-     */
+    /** Parsing lives in [FlipperBleProfile.RpcStatus]; see the note there. */
     private fun applyRpcStatus(data: Data) {
-        val value = data.getIntValue(Data.FORMAT_UINT32_LE, 0) ?: return
-        _rpcActive.value = value == FlipperBleProfile.RpcStatus.ACTIVE
+        val raw = data.value ?: return
+        _rpcActive.value = FlipperBleProfile.RpcStatus.isActive(raw)
     }
 
     private fun emitCredit(raw: ByteArray) {
