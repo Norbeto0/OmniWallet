@@ -18,11 +18,14 @@ import dev.omniwallet.app.MainActivity
 import dev.omniwallet.app.R
 import dev.omniwallet.core.domain.CredentialId
 import dev.omniwallet.core.domain.QuickActionPolicy
+import dev.omniwallet.core.domain.ServiceLifecyclePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -126,6 +129,15 @@ class EmulationService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
     private var watcher: Job? = null
 
+    /**
+     * Requests still running.
+     *
+     * The term that was missing. Without it the service treated "nothing is
+     * emulating yet" as "nothing to do" and shut down before the request it
+     * was started for had got as far as reading a setting.
+     */
+    private val inFlight = MutableStateFlow(0)
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -138,7 +150,6 @@ class EmulationService : Service() {
         // that does not call startForeground within a few seconds, and the work
         // below can legitimately take longer than that while a Flipper wakes up.
         promote(emulation.nowEmulating.value?.credential?.displayName)
-        observeSession()
 
         val source = intent?.getStringExtra(EXTRA_SOURCE)
             ?.let { name -> QuickActionPolicy.Source.entries.firstOrNull { it.name == name } }
@@ -149,24 +160,28 @@ class EmulationService : Service() {
                 val id = intent.getStringExtra(EXTRA_CREDENTIAL_ID)
                 val name = intent.getStringExtra(EXTRA_CREDENTIAL_NAME)
                 when {
-                    id != null -> scope.launch {
-                        announce(quickActions.toggle(source, CredentialId(id)))
-                    }
-                    name != null -> scope.launch {
-                        announce(quickActions.toggleByName(source, name))
-                    }
+                    id != null -> submit { quickActions.toggle(source, CredentialId(id)) }
+                    name != null -> submit { quickActions.toggleByName(source, name) }
                     else -> stopIfIdle()
                 }
             }
 
-            ACTION_STOP -> scope.launch { announce(quickActions.stop(source)) }
+            ACTION_STOP -> submit { quickActions.stop(source) }
 
             // Nothing to do: attaching is the request, and the session watcher
-            // above is what honours it.
+            // started below is what honours it.
             ACTION_ATTACH -> Unit
 
             else -> stopIfIdle()
         }
+
+        // Started *after* the branch above, never before it. `submit`
+        // increments the counter synchronously on this thread, so by the time
+        // the watcher's first reading happens the request is already counted.
+        // Launching the watcher first leaves a window in which it sees an idle
+        // service and stops it -- a narrower version of the very bug this
+        // counter was added to fix.
+        observeSession()
 
         // Not sticky: a restart with a null intent would have this service
         // running with no emulation to hold up, showing a notification about
@@ -175,26 +190,61 @@ class EmulationService : Service() {
     }
 
     /**
-     * Follow the session and shut down when it ends.
+     * Run a request, and count it while it runs.
      *
-     * The service exists to hold a session up; with no session it is an
-     * unexplained notification and a process the system cannot reclaim.
+     * The counting is the fix. Incrementing *before* the coroutine starts
+     * matters: doing it inside the launch would leave a window where the
+     * service looks idle, and that window is all the old bug needed.
      */
-    private fun observeSession() {
-        if (watcher?.isActive == true) return
-        watcher = scope.launch {
-            emulation.nowEmulating.collectLatest { session ->
-                if (session == null) {
-                    stopSelf()
-                } else {
-                    promote(session.credential.displayName)
-                }
+    private fun submit(request: suspend () -> QuickActions.Outcome) {
+        inFlight.update { it + 1 }
+        scope.launch {
+            try {
+                announce(request())
+            } finally {
+                inFlight.update { it - 1 }
+                stopIfIdle()
             }
         }
     }
 
+    /**
+     * Follow the session and shut down once there is genuinely nothing to do.
+     *
+     * The service exists to hold work up; with no session and no request
+     * running it is an unexplained notification and a process the system
+     * cannot reclaim.
+     *
+     * This used to watch the session alone, and a state flow hands its current
+     * value to every new collector -- so a service started to *begin* an
+     * emulation was told "nothing is emulating" immediately and stopped, taking
+     * the request with it when `onDestroy` cancelled the scope. That is why a
+     * widget tap did nothing whatsoever. [ServiceLifecyclePolicy] now owns the
+     * decision and is tested.
+     */
+    private fun observeSession() {
+        if (watcher?.isActive == true) return
+        watcher = scope.launch {
+            combine(emulation.nowEmulating, inFlight) { session, busy -> session to busy }
+                .collect { (session, busy) ->
+                    when {
+                        session != null -> promote(session.credential.displayName)
+                        ServiceLifecyclePolicy.shouldStop(false, busy) -> stopSelf()
+                        else -> Unit // work in progress; hold the service up
+                    }
+                }
+        }
+    }
+
     private fun stopIfIdle() {
-        if (emulation.nowEmulating.value == null) stopSelf()
+        if (
+            ServiceLifecyclePolicy.shouldStop(
+                sessionActive = emulation.nowEmulating.value != null,
+                requestsInFlight = inFlight.value,
+            )
+        ) {
+            stopSelf()
+        }
     }
 
     /**
@@ -217,7 +267,9 @@ class EmulationService : Service() {
             }
             else -> notify(outcome.message)
         }
-        stopIfIdle()
+        // Stopping is left to submit's finally, which runs after this request
+        // has been counted out. Deciding it here would read the count before
+        // it had been decremented, and never stop.
     }
 
     /**

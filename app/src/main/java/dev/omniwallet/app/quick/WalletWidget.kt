@@ -31,6 +31,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import dev.omniwallet.app.session.DeviceConnectionManager
 import dev.omniwallet.app.session.EmulationController
+import dev.omniwallet.app.session.QuickActions
 import dev.omniwallet.core.domain.CredentialRepository
 import dev.omniwallet.core.domain.StoredCredential
 import dev.omniwallet.core.domain.WalletOrdering
@@ -72,6 +73,9 @@ class WalletWidget : GlanceAppWidget() {
         fun repository(): CredentialRepository
         fun connections(): DeviceConnectionManager
         fun emulation(): EmulationController
+
+        /** For [EmulateAction] to report a start the platform refused. */
+        fun quickActions(): QuickActions
     }
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {

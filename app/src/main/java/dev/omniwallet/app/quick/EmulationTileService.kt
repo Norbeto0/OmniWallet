@@ -70,7 +70,14 @@ class EmulationTileService : TileService() {
                         QuickActionPolicy.Source.TILE,
                     )
                 }
-                EmulationService.start(this@EmulationTileService, intent)
+                // Checked, not discarded: a refused start used to look exactly
+                // like a broken one.
+                if (!EmulationService.start(this@EmulationTileService, intent)) {
+                    quickActions.recordExternalRefusal(
+                        "Android would not let OmniWallet start from Quick Settings. " +
+                            "Open the app once, then try again.",
+                    )
+                }
                 withContext(Dispatchers.Main) { refresh() }
             }
         }

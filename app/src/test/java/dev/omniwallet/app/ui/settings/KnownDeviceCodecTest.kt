@@ -73,3 +73,49 @@ class KnownDeviceCodecTest {
         SettingsStore.decodeKnownDevices("AA:BB\t") shouldBe listOf(KnownDevice("AA:BB", "AA:BB"))
     }
 }
+
+/**
+ * Which device an explicit tap reaches for.
+ *
+ * The bug this defends: tapping Disconnect clears the auto-connect target by
+ * design, and the quick surfaces used to go through the automatic path only —
+ * so one deliberate disconnect permanently broke every widget and tile tap.
+ */
+class ExplicitConnectTargetTest {
+
+    private val known = listOf(
+        KnownDevice("AA:11", "Flipper Qidoso"),
+        KnownDevice("BB:22", "Spare"),
+    )
+
+    @Test
+    fun `the auto-connect target wins when there is one`() {
+        val settings = AppSettings(
+            lastDeviceAddress = "BB:22",
+            lastDeviceName = "Spare",
+            knownDevices = known,
+        )
+        SettingsStore.explicitConnectTarget(settings) shouldBe KnownDevice("BB:22", "Spare")
+    }
+
+    @Test
+    fun `after a deliberate disconnect it falls back to the most recent known device`() {
+        // lastDeviceAddress is null here because the user tapped Disconnect.
+        val settings = AppSettings(knownDevices = known)
+        SettingsStore.explicitConnectTarget(settings) shouldBe KnownDevice("AA:11", "Flipper Qidoso")
+    }
+
+    @Test
+    fun `a device with no remembered name falls back to its address`() {
+        val settings = AppSettings(lastDeviceAddress = "CC:33", lastDeviceName = null)
+        SettingsStore.explicitConnectTarget(settings) shouldBe KnownDevice("CC:33", "CC:33")
+    }
+
+    @Test
+    fun `nothing paired ever yields nothing`() {
+        // Distinct from "could not reach it", and the two need different
+        // messages: one is a device that is asleep, the other is a device this
+        // app has never been introduced to.
+        SettingsStore.explicitConnectTarget(AppSettings()) shouldBe null
+    }
+}

@@ -213,6 +213,25 @@ class SettingsStore @Inject constructor(
                 "${device.address}$FIELD$name"
             }
 
+        /**
+         * Which device an explicit request should connect to.
+         *
+         * The auto-connect target if there is one, else the most recently used
+         * known device. That fallback is the point: tapping Disconnect clears
+         * the auto-connect target by design, and without this a widget or tile
+         * tap could never connect again after one deliberate disconnect.
+         *
+         * An explicit tap is a statement of intent, so it reaches further than
+         * the automatic path is allowed to.
+         */
+        fun explicitConnectTarget(settings: AppSettings): KnownDevice? {
+            val address = settings.lastDeviceAddress
+            if (address != null) {
+                return KnownDevice(address, settings.lastDeviceName ?: address)
+            }
+            return settings.knownDevices.firstOrNull()
+        }
+
         internal fun decodeKnownDevices(raw: String?): List<KnownDevice> =
             raw?.split(RECORD)
                 ?.mapNotNull { line ->

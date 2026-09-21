@@ -1,7 +1,7 @@
 # Hardware test script
 
 This app is developed in an environment with **no Bluetooth radio, no emulator,
-no Flipper and no GPS**. Compilation, lint and 147 JVM tests are verified there;
+no Flipper and no GPS**. Compilation, lint and 156 JVM tests are verified there;
 everything involving actual hardware can only be verified by you, on your phone.
 This script is written so one session settles it.
 
@@ -205,15 +205,33 @@ not verify, so a negative result here is worth more than everything above it.
 
 ### Widget
 
+The previous build's widget did nothing at all when tapped, and said nothing
+about why. Both halves of that are fixed, so there are two things to check.
+
 1. Long-press the home screen → Widgets → OmniWallet. Add it.
 2. It should list your most-used cards. With nothing loaded yet it should say
    so in a sentence rather than showing an empty box.
-3. **Tap a row.** Expected: the Flipper connects if needed and starts emitting,
-   and a notification appears.
+3. **Tap a row with the Flipper awake.** Expected: it connects if needed and
+   starts emitting within a few seconds, with a notification.
 4. **Tap the same row again.** It should stop.
-5. Emulate a card from inside the app, then look at the widget: that row should
-   now read *"Emulating · tap to stop"*. If it still says "Tap to emulate",
-   the widget is not being told to redraw and that is a bug.
+5. **Tap a row with the Flipper switched off.** Expected: a message saying it
+   could not reach the device. Not silence.
+6. Emulate a card from inside the app, then look at the widget: that row should
+   read *"Emulating · tap to stop"*.
+
+**The guarantee to test is that a tap is never silent.** Every tap should end
+in either emulation or a visible message — a notification, or a toast if the
+service could not start at all. If any tap does nothing whatsoever, that is the
+bug again and worth saying so immediately.
+
+If you get *"Android would not let OmniWallet start from the home screen"*,
+that is the OS restriction rather than a bug I can fix. Please say whether
+opening the app first and then tapping changes it, because that decides whether
+the widget is viable on your phone at all.
+
+One case that is worth trying on purpose: **tap Disconnect in the app, then tap
+a widget row.** It used to be that one deliberate disconnect permanently broke
+every widget tap thereafter. It should now connect.
 
 ### Quick Settings tile
 

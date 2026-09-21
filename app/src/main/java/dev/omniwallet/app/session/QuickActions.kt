@@ -137,8 +137,14 @@ class QuickActions @Inject constructor(
                 // Non-null: the policy refuses a start with no target, so
                 // reaching here means one was found.
                 val credential = requireNotNull(target)
-                if (!ensureConnected()) {
-                    Outcome.Refused("Could not reach your device")
+                val known = SettingsStore.explicitConnectTarget(settings.settings.first())
+                if (known == null) {
+                    // Two different problems, two different remedies. "Could
+                    // not reach your device" sends someone hunting for a
+                    // Flipper that this app has never been introduced to.
+                    Outcome.Refused("Connect your device in OmniWallet once first")
+                } else if (!ensureConnected()) {
+                    Outcome.Refused("Could not reach ${known.name}. Is it awake?")
                 } else if (emulation.emulate(credential)) {
                     Outcome.Started(credential.displayName)
                 } else {
@@ -165,14 +171,19 @@ class QuickActions @Inject constructor(
     /**
      * Bring the link up if it is not already.
      *
-     * Reuses auto-connect rather than opening a second way to connect: it
-     * already knows which device to look for and already respects a deliberate
-     * disconnect, so a widget tap cannot resurrect a connection the user shut
-     * down by hand.
+     * Uses `connectTo` rather than `tryReconnect`. The difference matters:
+     * `tryReconnect` is the *automatic* path and gives up when auto-connect is
+     * switched off or the device was forgotten by a deliberate disconnect --
+     * which meant one tap on Disconnect permanently broke every widget and
+     * tile tap thereafter. Someone tapping a card has asked for it, so this
+     * reaches for the last device used, or failing that the most recent one
+     * they have ever connected to.
      */
     private suspend fun ensureConnected(): Boolean {
         if (connections.isReady) return true
-        autoConnector.tryReconnect()
+        val target = SettingsStore.explicitConnectTarget(settings.settings.first())
+            ?: return false
+        autoConnector.connectTo(target.address, target.name)
         return connections.awaitReady(CONNECT_TIMEOUT_MILLIS)
     }
 
