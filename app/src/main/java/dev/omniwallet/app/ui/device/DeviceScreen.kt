@@ -1,5 +1,7 @@
 package dev.omniwallet.app.ui.device
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +38,22 @@ import dev.omniwallet.app.session.AutoConnector
 import dev.omniwallet.core.domain.ConnectionState
 import dev.omniwallet.core.domain.FailureReason
 import dev.omniwallet.transport.ble.BlePermissions
+
+/**
+ * Everything asked for in one prompt.
+ *
+ * Notifications are bundled with the BLE permissions rather than asked for
+ * separately at the moment something starts emulating. Without them the
+ * foreground service still runs, but its notification is suppressed -- and
+ * with it the Stop button, which is the one control that should never be hard
+ * to reach.
+ */
+private fun requiredPermissions(): List<String> = buildList {
+    addAll(BlePermissions.required)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        add(Manifest.permission.POST_NOTIFICATIONS)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,7 +102,7 @@ fun DeviceScreen(
                             )
                             if (state.readiness.missingPermissions.isNotEmpty()) {
                                 Button(onClick = {
-                                    permissionLauncher.launch(BlePermissions.required.toTypedArray())
+                                    permissionLauncher.launch(requiredPermissions().toTypedArray())
                                 }) { Text("Grant nearby devices") }
                             }
                         }

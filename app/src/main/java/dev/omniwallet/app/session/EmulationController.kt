@@ -1,5 +1,8 @@
 package dev.omniwallet.app.session
 
+import android.content.Context
+import android.content.Intent
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.omniwallet.core.domain.ConnectionState
 import dev.omniwallet.core.domain.CredentialRepository
 import dev.omniwallet.core.domain.DeviceException
@@ -29,6 +32,7 @@ data class NowEmulating(
  */
 @Singleton
 class EmulationController @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val connections: DeviceConnectionManager,
     private val repository: CredentialRepository,
     scope: CoroutineScope,
@@ -90,6 +94,11 @@ class EmulationController @Inject constructor(
             _nowEmulating.value = NowEmulating(credential, handle, System.currentTimeMillis())
             repository.markUsed(credential.id)
             _lastError.value = null
+            // The emulation runs on the Flipper, but the link to it lives in
+            // this process, and a backgrounded process is a process the system
+            // may reclaim. The service is what stops a card going dead the
+            // moment the user switches away to check something.
+            attachService()
             true
         } catch (e: DeviceException) {
             _lastError.value = e.message ?: "Could not start emulation"
@@ -123,5 +132,21 @@ class EmulationController @Inject constructor(
             _lastError.value = e.message ?: "Could not stop emulation"
             false
         }
+    }
+
+    /**
+     * Ask [EmulationService] to hold this session up.
+     *
+     * Best effort by design. The platform can refuse to start a foreground
+     * service from the background, and when it does the emulation is still
+     * running on the device and still stoppable from the app -- it simply has
+     * no notification and no protection from the process being reclaimed. That
+     * is worth degrading to, not worth throwing over.
+     */
+    private fun attachService() {
+        EmulationService.start(
+            context,
+            Intent(context, EmulationService::class.java).setAction(EmulationService.ACTION_ATTACH),
+        )
     }
 }

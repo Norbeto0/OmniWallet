@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">OmniWallet</string>
+    <string name="widget_description">Your most-used cards, one tap away.</string>
+    <string name="tile_label">OmniWallet</string>
 </resources>

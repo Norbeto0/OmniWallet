@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,6 +48,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val lastQuickAction by viewModel.lastQuickAction.collectAsStateWithLifecycle()
     val activity = LocalActivity.current as? FragmentActivity
     val biometricAvailable = remember(activity) {
         activity?.let { BiometricAuthenticator.isAvailable(it) } ?: false
@@ -136,6 +138,61 @@ fun SettingsScreen(
                     Switch(
                         checked = settings.nearbyRanking,
                         onCheckedChange = viewModel::setNearbyRanking,
+                    )
+                }
+            }
+
+            SettingsSection("Quick access") {
+                Text(
+                    "The home-screen widget and the Quick Settings tile work as soon as you " +
+                        "add them. Both refuse and open the app instead while the app lock is " +
+                        "on, because neither can ask for your fingerprint.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Allow other apps to trigger", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Lets Tasker, an NFC tag or a shortcut ask OmniWallet to emulate a " +
+                                "card. Anything on this phone that can send a broadcast can use " +
+                                "it, so it stays off unless you need it.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.automationEnabled,
+                        onCheckedChange = viewModel::setAutomationEnabled,
+                    )
+                }
+
+                if (settings.automationEnabled) {
+                    Text(
+                        "Send dev.omniwallet.action.EMULATE to " +
+                            "dev.omniwallet.app/.quick.AutomationReceiver with a string extra " +
+                            "\"name\" matching the card, or " +
+                            "dev.omniwallet.action.STOP to end it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+
+                // The audit line. Present whether or not automation is on,
+                // because the widget and tile report through it too, and a
+                // trigger firing when it should not is worth being able to see.
+                lastQuickAction?.let { outcome ->
+                    Text(
+                        "Last quick action: $outcome",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
             }

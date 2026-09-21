@@ -35,6 +35,21 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!--
+      The emulation runs on the Flipper, but the link to it lives in this
+      process, and a backgrounded process is one the system may reclaim. A
+      foreground service of type connectedDevice is the platform's answer, and
+      it brings the notification the situation deserves anyway: something is
+      being emitted on your behalf, with a visible way to stop it.
+
+      POST_NOTIFICATIONS is requested at runtime on API 33+. Without it the
+      service still runs, but its notification, and with it the Stop action,
+      is silently suppressed.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
@@ -53,6 +68,50 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".session.EmulationService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- The cards you are most likely to want, one tap from the home screen. -->
+        <receiver
+            android:name=".quick.WalletWidgetReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/wallet_widget_info" />
+        </receiver>
+
+        <service
+            android:name=".quick.EmulationTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_notification"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!--
+          Exported on purpose, and fenced accordingly. Anything on the phone
+          that can send a broadcast can reach this, which is what makes it
+          useful to Tasker and what makes it a liability. It is off by default,
+          refuses while the app lock is on, and records every call so Settings
+          can show what last triggered it. See AutomationReceiver.
+        -->
+        <receiver
+            android:name=".quick.AutomationReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="dev.omniwallet.action.EMULATE" />
+                <action android:name="dev.omniwallet.action.STOP" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

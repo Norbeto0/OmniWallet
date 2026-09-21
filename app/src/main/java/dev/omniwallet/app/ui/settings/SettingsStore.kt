@@ -27,6 +27,14 @@ data class AppSettings(
     val lastDeviceAddress: String? = null,
     val lastDeviceName: String? = null,
     val nearbyRanking: Boolean = true,
+    /**
+     * Whether other apps may ask OmniWallet to emulate a card.
+     *
+     * Off, and staying off until asked for. This is an exported trigger for
+     * the user's physical-access credentials; defaulting it on would mean
+     * every install ships an attack surface nobody requested.
+     */
+    val automationEnabled: Boolean = false,
 ) {
     companion object {
         /**
@@ -52,6 +60,7 @@ class SettingsStore @Inject constructor(
     private val lastAddressKey = stringPreferencesKey("last_device_address")
     private val lastNameKey = stringPreferencesKey("last_device_name")
     private val nearbyKey = booleanPreferencesKey("nearby_ranking")
+    private val automationKey = booleanPreferencesKey("automation_enabled")
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
@@ -73,6 +82,7 @@ class SettingsStore @Inject constructor(
             // user has tagged at least one card, so this switch only matters
             // to someone who has already opted in by using the feature.
             nearbyRanking = prefs[nearbyKey] ?: true,
+            automationEnabled = prefs[automationKey] ?: false,
         )
     }
 
@@ -109,6 +119,10 @@ class SettingsStore @Inject constructor(
 
     suspend fun setNearbyRanking(enabled: Boolean) {
         context.dataStore.edit { it[nearbyKey] = enabled }
+    }
+
+    suspend fun setAutomationEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[automationKey] = enabled }
     }
 
     suspend fun forgetDevice() {

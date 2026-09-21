@@ -17,6 +17,7 @@ navCompose = "2.10.1"
 room = "2.8.5"
 sqlcipher = "4.19.0"
 biometric = "1.1.0"
+glance = "1.2.0"
 wire = "7.0.3"
 
 # BLE. Mirrors the official Flipper Android app's own choices:
@@ -60,6 +61,12 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 sqlcipher = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
 androidx-sqlite = { module = "androidx.sqlite:sqlite", version = "2.7.1" }
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
+
+# Home-screen widget. Glance rather than RemoteViews by hand: the widget shows
+# a list built from the same repository the wallet reads, and RemoteViews
+# collection adapters are a materially worse way to express that.
+glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
+glance-material3 = { module = "androidx.glance:glance-material3", version.ref = "glance" }
 
 wire-runtime = { module = "com.squareup.wire:wire-runtime", version.ref = "wire" }
 

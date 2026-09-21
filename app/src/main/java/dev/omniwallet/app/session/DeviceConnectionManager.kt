@@ -13,7 +13,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -65,6 +67,18 @@ class DeviceConnectionManager @Inject constructor(
 
         flipper.connect()
     }
+
+    /**
+     * Suspend until the link is usable, or give up.
+     *
+     * For callers with no UI -- the widget, the tile, an automation trigger --
+     * where the alternative to waiting is reporting a failure the user could
+     * have avoided by waiting three seconds.
+     */
+    suspend fun awaitReady(timeoutMillis: Long): Boolean =
+        withTimeoutOrNull(timeoutMillis) {
+            connectionState.first { it is ConnectionState.Ready }
+        } != null
 
     suspend fun disconnect() {
         val current = _device.value ?: return
