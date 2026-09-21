@@ -8,7 +8,6 @@ import dev.omniwallet.app.session.EmulationService
 import dev.omniwallet.app.session.QuickActions
 import dev.omniwallet.app.ui.settings.SettingsStore
 import dev.omniwallet.core.domain.CredentialId
-import dev.omniwallet.core.domain.QuickActionPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -18,6 +17,8 @@ import javax.inject.Inject
 /**
  * Lets another app -- Tasker, an NFC tag, a launcher shortcut -- ask OmniWallet
  * to emulate a card.
+ *
+ * The last surface outside the app, now that the widget and tile are gone.
  *
  * ### This is an exported trigger for physical-access credentials
  *
@@ -34,9 +35,8 @@ import javax.inject.Inject
  *    Settings, so a trigger firing when it should not is visible rather than
  *    invisible.
  *
- * The first two rules are enforced in `QuickActionPolicy` alongside the widget
- * and tile rules, not here, so there is one place to read them and one place
- * for them to be wrong.
+ * The first two rules are enforced in `QuickActionPolicy`, not here, so there
+ * is one place to read them and one place for them to be wrong.
  *
  * Usage, for anyone writing a rule:
  *
@@ -95,18 +95,16 @@ class AutomationReceiver : BroadcastReceiver() {
 
         val serviceIntent = when {
             action == Companion.ACTION_STOP ->
-                EmulationService.stopIntent(context, QuickActionPolicy.Source.AUTOMATION)
+                EmulationService.stopIntent(context)
 
             intent.getStringExtra(EXTRA_ID) != null -> EmulationService.toggleIntent(
                 context,
                 CredentialId(intent.getStringExtra(EXTRA_ID)!!),
-                QuickActionPolicy.Source.AUTOMATION,
             )
 
             intent.getStringExtra(EXTRA_NAME) != null -> EmulationService.toggleByNameIntent(
                 context,
                 intent.getStringExtra(EXTRA_NAME)!!,
-                QuickActionPolicy.Source.AUTOMATION,
             )
 
             else -> {

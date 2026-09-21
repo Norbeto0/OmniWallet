@@ -17,7 +17,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -147,6 +150,15 @@ fun WalletScreen(
                 )
             }
 
+            if (state.searchWorthwhile) {
+                item(key = "search") {
+                    SearchField(
+                        query = state.query,
+                        onQueryChange = viewModel::setQuery,
+                    )
+                }
+            }
+
             if (state.credentials.isNotEmpty() || state.protocolFilter != null) {
                 item {
                     ProtocolFilterRow(
@@ -161,10 +173,14 @@ fun WalletScreen(
                     EmptyState(
                         connected = state.connected,
                         emptyByFilter = state.emptyByFilter,
+                        query = state.query,
                         filtered = state.protocolFilter != null,
                         hiddenCount = state.hiddenCount,
                         showHidden = state.showHidden,
-                        onClearFilter = { viewModel.setFilter(null) },
+                        onClearFilter = {
+                            viewModel.setFilter(null)
+                            viewModel.setQuery("")
+                        },
                         onShowHidden = viewModel::toggleShowHidden,
                         onOpenDevice = onOpenDevice,
                     )
@@ -333,9 +349,30 @@ private fun ProtocolFilterRow(selected: Protocol?, onSelect: (Protocol?) -> Unit
  * have.
  */
 @Composable
+private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        placeholder = { Text("Search your cards") },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                }
+            }
+        },
+        singleLine = true,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
 private fun EmptyState(
     connected: Boolean,
     emptyByFilter: Boolean,
+    query: String,
     filtered: Boolean,
     hiddenCount: Int,
     showHidden: Boolean,
@@ -355,6 +392,13 @@ private fun EmptyState(
             body = "You have $hiddenCount hidden ${if (hiddenCount == 1) "card" else "cards"} " +
                 "and nothing else. They are still saved."
             action = "Show hidden" to onShowHidden
+        }
+
+        emptyByFilter && query.isNotEmpty() -> {
+            title = "Nothing matches \"$query\""
+            body = "Search looks at the name you gave a card, the name on the device, and any " +
+                "place you tagged it."
+            action = "Clear search" to onClearFilter
         }
 
         emptyByFilter -> {

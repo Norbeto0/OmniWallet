@@ -4,8 +4,8 @@ import io.kotest.matchers.shouldBe
 import org.junit.Test
 
 /**
- * These decide whether a door opens from a surface with no authentication in
- * front of it. Worth proving from fixtures rather than reasoning about.
+ * This decides whether a door opens for a broadcast from another app. Worth
+ * proving from fixtures rather than reasoning about.
  */
 class QuickActionPolicyTest {
 
@@ -31,28 +31,25 @@ class QuickActionPolicyTest {
     )
 
     private fun decide(
-        source: QuickActionPolicy.Source = QuickActionPolicy.Source.WIDGET,
         request: QuickActionPolicy.Request = QuickActionPolicy.Request.START,
         conditions: QuickActionPolicy.Conditions = conditions(),
-    ) = QuickActionPolicy.decide(source, request, conditions)
+    ) = QuickActionPolicy.decide(request, conditions)
 
     @Test
-    fun `a widget tap on a usable card starts it`() {
+    fun `an enabled automation request on a usable card starts it`() {
         decide() shouldBe QuickActionPolicy.Decision.Start
     }
 
     // --- the lock ---------------------------------------------------------
 
     @Test
-    fun `a locked app never starts a card from outside`() {
-        QuickActionPolicy.Source.entries.forEach { source ->
-            decide(source = source, conditions = conditions(appLock = true)) shouldBe
-                QuickActionPolicy.Decision.NeedsUnlock
-        }
+    fun `a locked vault does not open for a broadcast`() {
+        decide(conditions = conditions(appLock = true)) shouldBe
+            QuickActionPolicy.Decision.NeedsUnlock
     }
 
     @Test
-    fun `a locked app still allows a stop`() {
+    fun `a locked vault still allows a stop`() {
         // The check that must sit above the lock. A stop reveals nothing, and
         // refusing it would be the same failure as a stop button that does not
         // stop -- which this project has already fixed once.
@@ -63,37 +60,25 @@ class QuickActionPolicyTest {
     }
 
     @Test
-    fun `tapping the running card stops it even when locked`() {
+    fun `asking for the running card stops it, even when locked`() {
         decide(conditions = conditions(appLock = true, running = true)) shouldBe
             QuickActionPolicy.Decision.Stop
     }
 
     @Test
-    fun `tapping the running card stops rather than restarting it`() {
+    fun `asking for the running card stops rather than restarting it`() {
         // The wallet's tap-again-to-stop gesture, honoured identically from
-        // the widget. A surface that restarted instead would be the exact bug
-        // the in-app card fixed.
+        // outside. A surface that restarted instead would be the exact bug the
+        // in-app card fixed.
         decide(conditions = conditions(running = true)) shouldBe
             QuickActionPolicy.Decision.Stop
     }
 
-    // --- automation -------------------------------------------------------
+    // --- the automation switch --------------------------------------------
 
     @Test
     fun `automation is refused until it is switched on`() {
-        val decision = decide(
-            source = QuickActionPolicy.Source.AUTOMATION,
-            conditions = conditions(automation = false),
-        )
-        decision.shouldBeRefusal()
-    }
-
-    @Test
-    fun `the automation switch does not gate the widget or the tile`() {
-        listOf(QuickActionPolicy.Source.WIDGET, QuickActionPolicy.Source.TILE).forEach { source ->
-            decide(source = source, conditions = conditions(automation = false)) shouldBe
-                QuickActionPolicy.Decision.Start
-        }
+        decide(conditions = conditions(automation = false)).shouldBeRefusal()
     }
 
     @Test
@@ -102,18 +87,9 @@ class QuickActionPolicyTest {
         // a "stop everything when I leave the building" rule should work even
         // for someone who never turned automation on for starting things.
         decide(
-            source = QuickActionPolicy.Source.AUTOMATION,
             request = QuickActionPolicy.Request.STOP,
             conditions = conditions(automation = false),
         ) shouldBe QuickActionPolicy.Decision.Stop
-    }
-
-    @Test
-    fun `automation switched on behaves like any other source`() {
-        decide(
-            source = QuickActionPolicy.Source.AUTOMATION,
-            conditions = conditions(automation = true),
-        ) shouldBe QuickActionPolicy.Decision.Start
     }
 
     // --- the card itself --------------------------------------------------
@@ -130,8 +106,8 @@ class QuickActionPolicyTest {
 
     @Test
     fun `a hidden card is refused`() {
-        // Hiding it was a deliberate act. Acting on it from a surface where the
-        // user cannot see what they picked would quietly undo that.
+        // Hiding it was a deliberate act. Acting on it for a caller that cannot
+        // see what it picked would quietly undo that.
         decide(conditions = conditions(target = card.copy(hidden = true))).shouldBeRefusal()
     }
 
@@ -143,11 +119,7 @@ class QuickActionPolicyTest {
             conditions(target = card.copy(hidden = true)),
             conditions(automation = false),
         ).forEach { c ->
-            val decision = QuickActionPolicy.decide(
-                QuickActionPolicy.Source.AUTOMATION,
-                QuickActionPolicy.Request.START,
-                c,
-            )
+            val decision = QuickActionPolicy.decide(QuickActionPolicy.Request.START, c)
             (decision as QuickActionPolicy.Decision.Refuse).reason.isNotBlank() shouldBe true
         }
     }

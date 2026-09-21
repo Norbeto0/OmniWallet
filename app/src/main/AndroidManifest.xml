@@ -76,29 +76,6 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <!-- The cards you are most likely to want, one tap from the home screen. -->
-        <receiver
-            android:name=".quick.WalletWidgetReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/wallet_widget_info" />
-        </receiver>
-
-        <service
-            android:name=".quick.EmulationTileService"
-            android:exported="true"
-            android:icon="@drawable/ic_notification"
-            android:label="@string/tile_label"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
-
         <!--
           Exported on purpose, and fenced accordingly. Anything on the phone
           that can send a broadcast can reach this, which is what makes it

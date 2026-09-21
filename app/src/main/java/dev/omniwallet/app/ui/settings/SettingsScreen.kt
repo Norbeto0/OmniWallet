@@ -142,17 +142,9 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection("Quick access") {
-                Text(
-                    "The home-screen widget and the Quick Settings tile work as soon as you " +
-                        "add them. Both refuse and open the app instead while the app lock is " +
-                        "on, because neither can ask for your fingerprint.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
+            SettingsSection("Automation") {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
@@ -184,12 +176,12 @@ fun SettingsScreen(
                     )
                 }
 
-                // The audit line. Present whether or not automation is on,
-                // because the widget and tile report through it too, and a
-                // trigger firing when it should not is worth being able to see.
+                // The audit line. Shown whether or not automation is on: a
+                // trigger firing when it should not is exactly the thing worth
+                // being able to see, and a refusal is worth seeing too.
                 lastQuickAction?.let { outcome ->
                     Text(
-                        "Last quick action: $outcome",
+                        "Last request: $outcome",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),

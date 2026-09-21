@@ -5,7 +5,6 @@ import dev.omniwallet.core.domain.CredentialId
 import dev.omniwallet.core.domain.CredentialRepository
 import dev.omniwallet.core.domain.QuickActionPolicy
 import dev.omniwallet.core.domain.StoredCredential
-import dev.omniwallet.core.domain.WalletOrdering
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,16 +13,15 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The one door every surface outside the app comes through.
+ * The one door into the vault from outside the app.
  *
- * The widget, the Quick Settings tile and the automation intent all want the
- * same thing -- "emulate this card" -- from contexts that have no UI, no
- * authentication and, in the automation case, no guarantee the request came
- * from the person holding the phone. Giving each of them its own path to
- * [EmulationController] would mean three places to get the rules right and
- * three places for them to drift apart. There is one.
+ * Only the automation intent comes through here now; the widget and tile that
+ * used to share it are gone. It is kept as its own class anyway, because the
+ * caller has no UI, no authentication and no guarantee of coming from the
+ * person holding the phone -- and those rules deserve somewhere to live that
+ * is not a broadcast receiver.
  *
- * The rules themselves live in [QuickActionPolicy], which is pure and tested.
+ * The rules themselves are in [QuickActionPolicy], which is pure and tested.
  * This class is the part that cannot be: reading settings, waiting for a radio,
  * driving the device.
  */
@@ -69,19 +67,19 @@ class QuickActions @Inject constructor(
     }
 
     /**
-     * The last thing a surface outside the app did, for Settings to show.
+     * The last thing an outside caller did, for Settings to show.
      *
      * An exported trigger that leaves no trace is an exported trigger nobody
-     * can audit. This is the cheapest honest version of that: the user can
-     * always see what the last request was and whether it worked.
+     * can audit, and this is a vault. The cheapest honest version: the user
+     * can always see what the last request was and whether it worked.
      */
     private val _lastOutcome = MutableStateFlow<String?>(null)
     val lastOutcome: StateFlow<String?> = _lastOutcome.asStateFlow()
 
     /** Start [id], or stop it if it is what is already running. */
-    suspend fun toggle(source: QuickActionPolicy.Source, id: CredentialId): Outcome = record {
+    suspend fun toggle(id: CredentialId): Outcome = record {
         val target = repository.observeCredentials().first().firstOrNull { it.id == id }
-        act(source, QuickActionPolicy.Request.START, target)
+        act(QuickActionPolicy.Request.START, target)
     }
 
     /**
@@ -94,23 +92,22 @@ class QuickActions @Inject constructor(
      * because they are called the same thing is not a decision to make on the
      * user's behalf.
      */
-    suspend fun toggleByName(source: QuickActionPolicy.Source, name: String): Outcome = record {
+    suspend fun toggleByName(name: String): Outcome = record {
         val matches = repository.observeCredentials().first()
             .filter { it.displayName.equals(name.trim(), ignoreCase = true) }
 
         when (matches.size) {
             0 -> Outcome.Refused("No card called \"$name\"")
-            1 -> act(source, QuickActionPolicy.Request.START, matches.single())
+            1 -> act(QuickActionPolicy.Request.START, matches.single())
             else -> Outcome.Refused("More than one card is called \"$name\"")
         }
     }
 
-    suspend fun stop(source: QuickActionPolicy.Source): Outcome = record {
-        act(source, QuickActionPolicy.Request.STOP, target = null)
+    suspend fun stop(): Outcome = record {
+        act(QuickActionPolicy.Request.STOP, target = null)
     }
 
     private suspend fun act(
-        source: QuickActionPolicy.Source,
         request: QuickActionPolicy.Request,
         target: StoredCredential?,
     ): Outcome {
@@ -122,7 +119,7 @@ class QuickActions @Inject constructor(
                 emulation.nowEmulating.value?.credential?.id == target.id,
         )
 
-        return when (val decision = QuickActionPolicy.decide(source, request, conditions)) {
+        return when (val decision = QuickActionPolicy.decide(request, conditions)) {
             is QuickActionPolicy.Decision.Refuse -> Outcome.Refused(decision.reason)
             QuickActionPolicy.Decision.NeedsUnlock -> Outcome.NeedsUnlock
 
@@ -152,20 +149,6 @@ class QuickActions @Inject constructor(
                 }
             }
         }
-    }
-
-    /**
-     * What a single-button surface should act on: whatever is running, else the
-     * card the user would most likely reach for next.
-     *
-     * Uses the wallet's own ordering rather than a second opinion, so the tile
-     * and the top of the list agree about what "most likely" means.
-     */
-    suspend fun quickTarget(): StoredCredential? {
-        emulation.nowEmulating.value?.let { return it.credential }
-        val visible = WalletOrdering.visible(repository.observeCredentials().first())
-            .filter { it.present }
-        return WalletOrdering.sort(visible).firstOrNull()
     }
 
     /**

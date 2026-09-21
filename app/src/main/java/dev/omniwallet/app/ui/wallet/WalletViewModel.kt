@@ -13,6 +13,7 @@ import dev.omniwallet.app.ui.settings.SettingsStore
 import dev.omniwallet.core.domain.ConnectionState
 import dev.omniwallet.core.domain.CredentialId
 import dev.omniwallet.core.domain.CredentialRepository
+import dev.omniwallet.core.domain.CredentialSearch
 import dev.omniwallet.core.domain.DeviceKind
 import dev.omniwallet.core.domain.Fix
 import dev.omniwallet.core.domain.Place
@@ -38,6 +39,7 @@ data class WalletUiState(
     val favourites: List<StoredCredential> = emptyList(),
     val nearby: List<ProximityRanking.Nearby> = emptyList(),
     val protocolFilter: Protocol? = null,
+    val query: String = "",
     val connectionState: ConnectionState = ConnectionState.Disconnected,
     val connectedName: String? = null,
     val nowEmulating: NowEmulating? = null,
@@ -62,6 +64,18 @@ data class WalletUiState(
     /** Empty only because something is filtering it. */
     val emptyByFilter: Boolean get() = isEmpty && totalCount > 0
 
+    /** Whether a search box is worth the vertical space it costs. */
+    val searchWorthwhile: Boolean get() = totalCount >= SEARCH_THRESHOLD || query.isNotEmpty()
+
+    companion object {
+        /**
+         * Below this, everything fits on a screen and a search box is clutter.
+         * Above it, scrolling for the card you need at a door is the whole
+         * experience and it is a bad one.
+         */
+        const val SEARCH_THRESHOLD = 8
+    }
+
     /** Whether reading a location could serve any purpose at all. */
     val anyPlaceTagged: Boolean get() = credentials.any { it.place != null }
 }
@@ -74,6 +88,7 @@ private data class Local(
     val locating: Boolean = false,
     val message: String? = null,
     val fix: Fix? = null,
+    val query: String = "",
 )
 
 private data class Device(val state: ConnectionState, val name: String?)
@@ -101,7 +116,8 @@ class WalletViewModel @Inject constructor(
         combine(local, settings.settings) { own, prefs -> own to prefs },
     ) { stored, device, running, (own, prefs) ->
         val visible = if (own.showHidden) stored else WalletOrdering.visible(stored)
-        val filtered = own.filter?.let { p -> visible.filter { it.protocol == p } } ?: visible
+        val byProtocol = own.filter?.let { p -> visible.filter { it.protocol == p } } ?: visible
+        val filtered = CredentialSearch.filter(byProtocol, own.query)
 
         WalletUiState(
             credentials = WalletOrdering.sort(filtered),
@@ -109,6 +125,7 @@ class WalletViewModel @Inject constructor(
             favourites = WalletOrdering.sort(filtered.filter { it.favourite }),
             nearby = nearbyOf(filtered, own.fix, prefs),
             protocolFilter = own.filter,
+            query = own.query,
             connectionState = device.state,
             connectedName = device.name,
             nowEmulating = running.now,
@@ -248,6 +265,10 @@ class WalletViewModel @Inject constructor(
 
     fun setFilter(protocol: Protocol?) {
         local.update { it.copy(filter = protocol) }
+    }
+
+    fun setQuery(query: String) {
+        local.update { it.copy(query = query) }
     }
 
     fun toggleShowHidden() {

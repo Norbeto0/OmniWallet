@@ -20,7 +20,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bluetooth
-import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -42,12 +42,14 @@ import kotlinx.coroutines.launch
 /**
  * Three screens, shown once.
  *
- * The first one is the one that matters. The single most common
- * misunderstanding this app could produce is that the *phone* is emulating the
- * card -- it is not, and Android cannot: HCE presents neither an arbitrary UID
- * nor Mifare Classic, which is the entire reason the external device exists.
- * Someone who installs this expecting a card emulator will conclude it is
- * broken. Saying so in the first sentence costs one screen and prevents that.
+ * The first one is the one that matters, and it has two jobs. It says what
+ * this app is -- a vault for the credentials you carry, not a Flipper
+ * companion; the official app is the companion and is better at it -- and it
+ * heads off the single most likely misunderstanding, which is that the *phone*
+ * is emulating the card. It is not, and Android cannot: HCE presents neither
+ * an arbitrary UID nor Mifare Classic, which is the entire reason the external
+ * device exists. Someone who installs this expecting a card emulator will
+ * conclude it is broken.
  *
  * The other two exist because both are things the user must do on hardware the
  * app cannot reach: switch Bluetooth on at the Flipper, and grant a permission
@@ -61,11 +63,12 @@ private data class Pane(
 
 private val panes = listOf(
     Pane(
-        icon = Icons.Outlined.CreditCard,
-        title = "Your phone is the remote",
-        body = "OmniWallet does not emulate cards itself — Android cannot present an " +
-            "arbitrary card ID, which is exactly why your Flipper exists. This app is a " +
-            "map of your credentials and a remote control for the device that emits them.",
+        icon = Icons.Outlined.Lock,
+        title = "A vault for the keys you carry",
+        body = "Your own names for the doors you can open, encrypted on this phone and locked " +
+            "behind your fingerprint. It does not emulate anything itself — Android cannot " +
+            "present an arbitrary card ID, which is why your Flipper exists. This is the map; " +
+            "the Flipper is the key.",
     ),
     Pane(
         icon = Icons.Outlined.Bluetooth,
@@ -79,7 +82,7 @@ private val panes = listOf(
         title = "One permission, then you are done",
         body = "Android needs Nearby devices before it will return any Bluetooth results " +
             "at all. Without it a scan finds nothing and reports no error, which looks " +
-            "exactly like a broken app. Nothing here leaves your phone.",
+            "exactly like a broken app. Nothing here leaves your phone, ever.",
     ),
 )
 

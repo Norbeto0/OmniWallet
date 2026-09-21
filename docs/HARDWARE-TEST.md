@@ -1,7 +1,7 @@
 # Hardware test script
 
 This app is developed in an environment with **no Bluetooth radio, no emulator,
-no Flipper and no GPS**. Compilation, lint and 156 JVM tests are verified there;
+no Flipper and no GPS**. Compilation, lint and 164 JVM tests are verified there;
 everything involving actual hardware can only be verified by you, on your phone.
 This script is written so one session settles it.
 
@@ -198,71 +198,51 @@ Coarse location instead of precise is fine and supported — the question is
 please say so, because the accuracy the platform reports changes how wide the
 search is.
 
-## 10. Quick surfaces — M8
+## 10. The vault — lock, search, automation
 
-**None of this has ever run on a phone.** Everything below is the part I could
-not verify, so a negative result here is worth more than everything above it.
+The widget and the Quick Settings tile are **gone**. The official Flipper app
+does those better, and this one is a credential vault rather than a device
+companion. What is left is the part that app deliberately does not do.
 
-### Widget
+### The lock is now on by default
 
-The previous build's widget did nothing at all when tapped, and said nothing
-about why. Both halves of that are fixed, so there are two things to check.
+1. Close the app fully and reopen it. Expected: a fingerprint prompt straight
+   away, not a tap-then-prompt.
+2. Leave the app and come back within 30 seconds: **no** re-prompt. That grace
+   period is what stops a lock getting switched off in irritation.
+3. Leave it longer than 30 seconds: it should re-prompt.
+4. Settings → Security should let you turn it off, and turning it off should
+   not leave you stuck behind the lock.
 
-1. Long-press the home screen → Widgets → OmniWallet. Add it.
-2. It should list your most-used cards. With nothing loaded yet it should say
-   so in a sentence rather than showing an empty box.
-3. **Tap a row with the Flipper awake.** Expected: it connects if needed and
-   starts emitting within a few seconds, with a notification.
-4. **Tap the same row again.** It should stop.
-5. **Tap a row with the Flipper switched off.** Expected: a message saying it
-   could not reach the device. Not silence.
-6. Emulate a card from inside the app, then look at the widget: that row should
-   read *"Emulating · tap to stop"*.
+> If your phone has no screen lock configured at all, this should let you
+> straight through rather than stranding you. Worth confirming if that
+> describes any device you have.
 
-**The guarantee to test is that a tap is never silent.** Every tap should end
-in either emulation or a visible message — a notification, or a toast if the
-service could not start at all. If any tap does nothing whatsoever, that is the
-bug again and worth saying so immediately.
+### Search
 
-If you get *"Android would not let OmniWallet start from the home screen"*,
-that is the OS restriction rather than a bug I can fix. Please say whether
-opening the app first and then tapping changes it, because that decides whether
-the widget is viable on your phone at all.
+Only appears once you have **eight or more** cards; below that everything fits
+on a screen and a search box is clutter.
 
-One case that is worth trying on purpose: **tap Disconnect in the app, then tap
-a widget row.** It used to be that one deliberate disconnect permanently broke
-every widget tap thereafter. It should now connect.
-
-### Quick Settings tile
-
-1. Edit your Quick Settings and add **OmniWallet**.
-2. Tap it with the phone unlocked → it should emulate your most recent card,
-   and the tile should light up with that card's name.
-3. Tap again → stop.
-4. **From the lock screen:** it should ask you to unlock first. If it emulates
-   without unlocking, stop and tell me — that is a security bug, not a rough
-   edge.
-
-### Does emulation survive backgrounding?
-
-1. Start emulating a card.
-2. Press Home. Open two or three other apps.
-3. The notification should still be there, and the Flipper should still be
-   emitting.
-4. Tap **Stop** in the notification. It should actually stop.
-
-This is the one I am least able to predict. Android's rules for foreground
-services changed repeatedly and vary by manufacturer; a Samsung or Xiaomi phone
-may kill it regardless.
+1. Type part of a card's name. It should narrow as you type.
+2. Type the **original filename** of a card you renamed — that should find it
+   too.
+3. Type the name of a **place** you tagged. Same.
+4. Type two words in the wrong order ("door office" for "Office door"). Should
+   still find it.
+5. Type nonsense. Expected: *Nothing matches "…"* with a Clear search button,
+   not an empty screen and not "nothing saved on the device yet".
+6. Type `nfc`. Expected: **no results.** Search only looks at what you can see
+   — names and places — not file paths. If `nfc` returns your whole library,
+   that is a bug.
 
 ### The automation intent
 
 Off by default. **Check that first:**
 
 1. Without touching Settings, send the broadcast below. Expected: nothing
-   happens, and Settings → Quick access shows *"Refused an automation request:
+   happens, and Settings → Automation shows *"Refused an automation request:
    automation is switched off"*.
-2. Now turn **Settings → Quick access → Allow other apps to trigger** on.
+2. Now turn **Settings → Automation → Allow other apps to trigger** on.
 3. Send it again. Expected: it emulates.
 
 From a computer with adb, or Tasker's "Send Intent" action:
@@ -282,11 +262,25 @@ adb shell am broadcast -a dev.omniwallet.action.STOP \
 bug I can fix: Android 12 and later forbid starting a foreground service from
 the background, and a broadcast from another app usually has no exemption. If
 that is what you see, try again with OmniWallet recently opened and tell me
-whether that changes it. Knowing which case applies on your phone decides
-whether this feature is worth keeping.
+whether that changes it.
 
-4. With the **app lock on**, every start request should be refused and the app
-   should open instead. Stop requests should still work. Please check both.
+4. With the lock on — which is now the default — every start request should be
+   refused and the app should open instead. **Stop requests should still
+   work.** Please check both: a stop that refuses because the vault is locked
+   would be the same failure as a stop button that does not stop.
+
+### Does emulation survive backgrounding?
+
+The foreground service stayed, because this part was never about the widget.
+
+1. Start emulating a card from the wallet.
+2. Press Home. Open two or three other apps.
+3. The notification should still be there, and the Flipper should still be
+   emitting.
+4. Tap **Stop** in the notification. It should actually stop.
+
+Android's rules here changed repeatedly and vary by manufacturer; a Samsung or
+Xiaomi phone may kill it regardless.
 
 ## 11. Two devices — M9
 
@@ -314,8 +308,10 @@ verified in `docs/PROTOCOL-NOTES.md`.
 |---|---|
 | Auto-connect | reconnects to your last device on launch and on returning to the app |
 | Places (M7) | tag a card to a location, see it first when you are there |
-| Widget, tile, intent (M8) | emulate without opening the app — sections 10 |
-| Foreground service (M8) | emulation should survive you switching apps |
+| Widget and tile removed | the official Flipper app does those better |
+| Vault lock on by default | it holds a map of doors you can open — section 10 |
+| Search | once you have eight or more cards — section 10 |
+| Foreground service | emulation should survive you switching apps |
 | Onboarding (M9) | clean installs only — section 8 |
 | Device switcher (M9) | two Flippers without rescanning |
 | Firmware reporting (M9) | what you are running, shown on the Device tab |

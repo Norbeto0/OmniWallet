@@ -17,7 +17,6 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.omniwallet.app.MainActivity
 import dev.omniwallet.app.R
 import dev.omniwallet.core.domain.CredentialId
-import dev.omniwallet.core.domain.QuickActionPolicy
 import dev.omniwallet.core.domain.ServiceLifecyclePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -65,39 +64,23 @@ class EmulationService : Service() {
 
         const val EXTRA_CREDENTIAL_ID = "credential_id"
         const val EXTRA_CREDENTIAL_NAME = "credential_name"
-        const val EXTRA_SOURCE = "source"
 
         private const val CHANNEL_ID = "emulation"
         private const val NOTIFICATION_ID = 1
         private const val ALERT_NOTIFICATION_ID = 2
 
-        fun toggleIntent(
-            context: Context,
-            id: CredentialId,
-            source: QuickActionPolicy.Source,
-        ): Intent =
+        fun toggleIntent(context: Context, id: CredentialId): Intent =
             Intent(context, EmulationService::class.java)
                 .setAction(ACTION_TOGGLE)
                 .putExtra(EXTRA_CREDENTIAL_ID, id.value)
-                .putExtra(EXTRA_SOURCE, source.name)
 
-        fun toggleByNameIntent(
-            context: Context,
-            name: String,
-            source: QuickActionPolicy.Source,
-        ): Intent =
+        fun toggleByNameIntent(context: Context, name: String): Intent =
             Intent(context, EmulationService::class.java)
                 .setAction(ACTION_TOGGLE)
                 .putExtra(EXTRA_CREDENTIAL_NAME, name)
-                .putExtra(EXTRA_SOURCE, source.name)
 
-        fun stopIntent(
-            context: Context,
-            source: QuickActionPolicy.Source = QuickActionPolicy.Source.WIDGET,
-        ): Intent =
-            Intent(context, EmulationService::class.java)
-                .setAction(ACTION_STOP)
-                .putExtra(EXTRA_SOURCE, source.name)
+        fun stopIntent(context: Context): Intent =
+            Intent(context, EmulationService::class.java).setAction(ACTION_STOP)
 
         /**
          * Start the service, reporting rather than crashing when the platform
@@ -151,22 +134,18 @@ class EmulationService : Service() {
         // below can legitimately take longer than that while a Flipper wakes up.
         promote(emulation.nowEmulating.value?.credential?.displayName)
 
-        val source = intent?.getStringExtra(EXTRA_SOURCE)
-            ?.let { name -> QuickActionPolicy.Source.entries.firstOrNull { it.name == name } }
-            ?: QuickActionPolicy.Source.WIDGET
-
         when (intent?.action) {
             ACTION_TOGGLE -> {
                 val id = intent.getStringExtra(EXTRA_CREDENTIAL_ID)
                 val name = intent.getStringExtra(EXTRA_CREDENTIAL_NAME)
                 when {
-                    id != null -> submit { quickActions.toggle(source, CredentialId(id)) }
-                    name != null -> submit { quickActions.toggleByName(source, name) }
+                    id != null -> submit { quickActions.toggle(CredentialId(id)) }
+                    name != null -> submit { quickActions.toggleByName(name) }
                     else -> stopIfIdle()
                 }
             }
 
-            ACTION_STOP -> submit { quickActions.stop(source) }
+            ACTION_STOP -> submit { quickActions.stop() }
 
             // Nothing to do: attaching is the request, and the session watcher
             // started below is what honours it.

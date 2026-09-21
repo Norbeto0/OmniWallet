@@ -27,7 +27,7 @@ data class KnownDevice(val address: String, val name: String)
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = false,
-    val appLockEnabled: Boolean = false,
+    val appLockEnabled: Boolean = true,
     /** How long the app may sit in the background before re-locking. */
     val lockGraceMillis: Long = DEFAULT_LOCK_GRACE_MILLIS,
     val blockScreenshots: Boolean = false,
@@ -83,7 +83,12 @@ class SettingsStore @Inject constructor(
             // Off by default: Flipper orange is the app's identity, and an app
             // that turns blue on a blue wallpaper stops looking like itself.
             dynamicColor = prefs[dynamicKey] ?: false,
-            appLockEnabled = prefs[lockKey] ?: false,
+            // On by default. This holds a map of the doors its owner can
+            // physically open; a vault that starts unlocked is a wallet with
+            // the flap open. Safe to default on because the authenticator
+            // falls through when the phone has no screen lock configured, so
+            // nobody can be stranded outside their own library.
+            appLockEnabled = prefs[lockKey] ?: true,
             lockGraceMillis = prefs[graceKey] ?: AppSettings.DEFAULT_LOCK_GRACE_MILLIS,
             blockScreenshots = prefs[screenshotKey] ?: false,
             // On by default: the app is useless without a device, so making
