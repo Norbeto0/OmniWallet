@@ -88,6 +88,16 @@ class FlipperDevice(
         val ADVERTISED_SERVICE_MASK: UUID = ScanTarget.shortUuidMask(wildcardBits = 4)
 
         /** Discovery pattern for a Flipper Zero. */
+        /** Each level is a round trip, so the walk stops before it gets silly. */
+        const val MAX_LISTING_DEPTH = 3
+
+        /**
+         * Folders the firmware keeps for itself. `assets` holds app resources
+         * and `.cache` is scratch space; neither holds anything a user saved.
+         * User folders like `Tesla/` or `remote/` are walked normally.
+         */
+        val SKIPPED_DIRECTORIES = setOf("assets", ".cache", ".tmp")
+
         val SCAN_TARGET: ScanTarget = ScanTarget(
             kind = DeviceKind.FLIPPER_ZERO,
             serviceUuid = ADVERTISED_SERVICE,
@@ -318,18 +328,46 @@ class FlipperDevice(
 
     override suspend fun listCredentials(): List<RemoteCredential> {
         val rpc = requireClient()
-        return FlipperApp.entries.flatMap { app ->
-            rpc.listDirectory(app.directory)
-                .filter { !it.isDirectory && it.name.endsWith(app.fileExtension, ignoreCase = true) }
-                .map { entry ->
-                    RemoteCredential(
-                        displayName = entry.name.substringBeforeLast('.'),
-                        protocol = app.protocol,
-                        location = CredentialLocation.FlipperFile("${app.directory}/${entry.name}"),
-                        sizeBytes = entry.sizeBytes,
-                    )
-                }
-        }
+        return FlipperApp.entries.flatMap { app -> collect(rpc, app, app.directory, depth = 0) }
+    }
+
+    /**
+     * Walk an asset directory, descending into sub-folders.
+     *
+     * `storage_list` is not recursive, and people organise their Flippers:
+     * sub-GHz files routinely live in `Tesla/`, `remote/` or `playlist/`. A
+     * flat listing found three files on a real device while most of the
+     * library sat one level down, invisible -- which is not much of a wallet.
+     *
+     * Depth is bounded because each level costs a round trip, and a deep or
+     * looping tree should not turn opening the app into a stall.
+     */
+    private suspend fun collect(
+        rpc: FlipperRpcClient,
+        app: FlipperApp,
+        directory: String,
+        depth: Int,
+    ): List<RemoteCredential> {
+        val entries = rpc.listDirectory(directory)
+
+        val here = entries
+            .filter { !it.isDirectory && it.name.endsWith(app.fileExtension, ignoreCase = true) }
+            .map { entry ->
+                RemoteCredential(
+                    displayName = entry.name.substringBeforeLast('.'),
+                    protocol = app.protocol,
+                    location = CredentialLocation.FlipperFile("$directory/${entry.name}"),
+                    sizeBytes = entry.sizeBytes,
+                )
+            }
+
+        if (depth >= MAX_LISTING_DEPTH) return here
+
+        val nested = entries
+            .filter { it.isDirectory && it.name !in SKIPPED_DIRECTORIES }
+            .flatMap { dir -> collect(rpc, app, "$directory/${dir.name}", depth + 1) }
+
+        return here + nested
     }
 
     override fun canEmulate(credential: Credential): Boolean =

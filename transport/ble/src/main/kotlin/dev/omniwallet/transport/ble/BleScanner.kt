@@ -88,13 +88,14 @@ class BleScanner(
     @SuppressLint("MissingPermission")
     private fun ScanResult.toDiscoveredDevice(): DiscoveredDevice {
         val advertised: List<UUID> = scanRecord?.serviceUuids?.map { it.uuid }.orEmpty()
+        val advertisedName = scanRecord?.deviceName
         return DiscoveredDevice(
             address = device.address,
-            name = scanRecord?.deviceName,
+            name = advertisedName,
             rssi = rssi,
             advertisedServices = advertised.map { it.toString().lowercase() },
             kind = advertised.firstNotNullOfOrNull { uuid ->
-                targets.firstOrNull { it.matches(uuid) }?.kind
+                targets.firstOrNull { it.identifies(uuid, advertisedName) }?.kind
             },
         )
     }

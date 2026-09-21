@@ -89,3 +89,59 @@ class ScanTargetTest {
         wide.matches(ScanTarget.shortUuid(0x3100)) shouldBe false
     }
 }
+
+/**
+ * Name hints, added because a real scan reported a device called "Camera" as a
+ * Chameleon Ultra. It advertises the standard Nordic UART Service, which is
+ * not remotely distinctive.
+ */
+class ScanTargetNameHintTest {
+
+    private val nus = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e")
+
+    private val chameleon = ScanTarget(
+        kind = DeviceKind.CHAMELEON_ULTRA,
+        serviceUuid = nus,
+        nameHints = listOf("Chameleon", "CU-"),
+    )
+
+    @Test
+    fun `does not claim an unrelated device sharing the service`() {
+        // The exact case observed on hardware.
+        chameleon.identifies(nus, "Camera") shouldBe false
+    }
+
+    @Test
+    fun `identifies a device whose name looks right`() {
+        listOf("ChameleonUltra", "Chameleon Ultra", "CU-1234", "my chameleon").forEach { name ->
+            chameleon.identifies(nus, name) shouldBe true
+        }
+    }
+
+    /**
+     * An unnamed advertisement cannot satisfy a name hint. Treating "no name"
+     * as "probably it" is how the Camera bug happened in the first place.
+     */
+    @Test
+    fun `an unnamed advertisement stays unidentified`() {
+        chameleon.identifies(nus, null) shouldBe false
+    }
+
+    @Test
+    fun `hints do not rescue a wrong service`() {
+        val other = UUID.fromString("0000180f-0000-1000-8000-00805f9b34fb")
+        chameleon.identifies(other, "ChameleonUltra") shouldBe false
+    }
+
+    /** Without hints the UUID alone decides -- the Flipper case. */
+    @Test
+    fun `a target with no hints ignores the name entirely`() {
+        val flipper = ScanTarget(
+            kind = DeviceKind.FLIPPER_ZERO,
+            serviceUuid = ScanTarget.shortUuid(0x3080),
+            mask = ScanTarget.shortUuidMask(4),
+        )
+        flipper.identifies(ScanTarget.shortUuid(0x3082), "Lochory") shouldBe true
+        flipper.identifies(ScanTarget.shortUuid(0x3082), null) shouldBe true
+    }
+}

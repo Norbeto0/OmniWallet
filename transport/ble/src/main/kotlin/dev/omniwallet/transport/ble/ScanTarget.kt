@@ -18,14 +18,38 @@ data class ScanTarget(
     val serviceUuid: UUID,
     /** Null matches [serviceUuid] exactly; otherwise only the set bits matter. */
     val mask: UUID? = null,
+    /**
+     * Optional substrings the advertised name must contain, case-insensitively.
+     *
+     * Needed because some services are not distinctive. The Chameleon speaks
+     * over the standard Nordic UART Service, which many unrelated devices also
+     * advertise -- a real scan turned up a device called "Camera" that the app
+     * cheerfully labelled a Chameleon Ultra. When the service alone cannot
+     * identify hardware, saying "unrecognised" beats guessing.
+     */
+    val nameHints: List<String> = emptyList(),
 ) {
-    /** Whether an advertised UUID matches this target. */
+    /** Whether an advertised UUID matches this target, ignoring the name. */
     fun matches(advertised: UUID): Boolean {
         val m = mask ?: return advertised == serviceUuid
         return (advertised.mostSignificantBits and m.mostSignificantBits) ==
             (serviceUuid.mostSignificantBits and m.mostSignificantBits) &&
             (advertised.leastSignificantBits and m.leastSignificantBits) ==
             (serviceUuid.leastSignificantBits and m.leastSignificantBits)
+    }
+
+    /**
+     * Whether an advertisement identifies this device.
+     *
+     * With no [nameHints] the UUID is enough. With them, the name must also
+     * look right -- and an advertisement with no name at all cannot satisfy
+     * that, so it stays unidentified rather than being assumed.
+     */
+    fun identifies(advertised: UUID, name: String?): Boolean {
+        if (!matches(advertised)) return false
+        if (nameHints.isEmpty()) return true
+        val candidate = name ?: return false
+        return nameHints.any { candidate.contains(it, ignoreCase = true) }
     }
 
     companion object {

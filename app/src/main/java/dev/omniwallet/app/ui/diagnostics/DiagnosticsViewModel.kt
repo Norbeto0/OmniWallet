@@ -12,6 +12,7 @@ import dev.omniwallet.core.domain.CredentialId
 import dev.omniwallet.core.domain.CredentialLocation
 import dev.omniwallet.core.domain.EmulationHandle
 import dev.omniwallet.core.domain.RemoteCredential
+import dev.omniwallet.app.session.DeviceConnectionManager
 import dev.omniwallet.device.flipper.FlipperDevice
 import dev.omniwallet.transport.ble.BlePermissions
 import dev.omniwallet.transport.ble.BleScanner
@@ -62,13 +63,14 @@ data class DiagnosticsUiState(
 class DiagnosticsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val scanner: BleScanner,
+    private val connections: DeviceConnectionManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DiagnosticsUiState())
     val state: StateFlow<DiagnosticsUiState> = _state.asStateFlow()
 
     private var scanJob: Job? = null
-    private var device: FlipperDevice? = null
+    private var observed: FlipperDevice? = null
 
     init {
         refreshReadiness()
@@ -160,26 +162,24 @@ class DiagnosticsViewModel @Inject constructor(
     @SuppressLint("MissingPermission")
     fun connect(discovered: DiscoveredDevice) {
         stopScan()
-        val adapter = BlePermissions.adapter(context) ?: run {
-            log("no Bluetooth adapter")
-            return
+        viewModelScope.launch {
+            busy {
+                log("connecting to ${discovered.displayName} (${discovered.address})")
+                runCatching { connections.connect(discovered) }
+                    .onFailure { log("connect failed: ${it.message}") }
+            }
+            // The device is owned by DeviceConnectionManager, not by this
+            // screen, so the link survives navigating away from diagnostics.
+            val flipper = connections.device.value
+            _state.update { it.copy(connectedTo = discovered.displayName, mtu = flipper?.negotiatedMtu ?: 0) }
+            observe(flipper)
         }
+    }
 
-        // Tear down any previous device first; otherwise its collectors and BLE
-        // manager outlive it for the whole ViewModel lifetime.
-        device?.let { previous ->
-            viewModelScope.launch { runCatching { previous.disconnect() } }
-        }
-
-        val remote = adapter.getRemoteDevice(discovered.address)
-
-        val flipper = FlipperDevice(context, remote, viewModelScope, discovered.displayName)
-        device = flipper
-        _state.update { it.copy(connectedTo = discovered.displayName) }
-
+    private fun observe(flipper: FlipperDevice?) {
+        if (flipper == null || flipper === observed) return
+        observed = flipper
         viewModelScope.launch { flipper.connectionState.collect { onConnectionState(it) } }
-        // Mirror the device's own event log, which carries the GATT and bond
-        // detail that makes a failed connection diagnosable after the fact.
         viewModelScope.launch {
             var seen = 0
             flipper.events.collect { events ->
@@ -192,16 +192,6 @@ class DiagnosticsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             flipper.credit.collect { credit -> _state.update { it.copy(credit = credit) } }
-        }
-
-        viewModelScope.launch {
-            busy {
-                log("connecting to ${discovered.displayName} (${discovered.address})")
-                runCatching { flipper.connect() }
-                    .onSuccess { log("connected; mtu=${flipper.negotiatedMtu}") }
-                    .onFailure { log("connect failed: ${it.message}") }
-                _state.update { it.copy(mtu = flipper.negotiatedMtu) }
-            }
         }
     }
 
@@ -220,13 +210,9 @@ class DiagnosticsViewModel @Inject constructor(
     }
 
     fun disconnect() {
-        val flipper = device ?: return
         viewModelScope.launch {
-            busy {
-                runCatching { flipper.disconnect() }
-                    .onFailure { log("disconnect error: ${it.message}") }
-            }
-            device = null
+            busy { runCatching { connections.disconnect() }.onFailure { log("disconnect error: ${it.message}") } }
+            observed = null
             _state.update { it.copy(connectedTo = null, deviceInfo = emptyMap(), credentials = emptyList()) }
         }
     }
@@ -300,7 +286,7 @@ class DiagnosticsViewModel @Inject constructor(
     }
 
     private fun withDevice(block: suspend (FlipperDevice) -> Unit) {
-        val flipper = device ?: run { log("not connected"); return }
+        val flipper = connections.device.value ?: run { log("not connected"); return }
         viewModelScope.launch {
             busy { runCatching { block(flipper) }.onFailure { log("error: ${it.message}") } }
         }

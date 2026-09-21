@@ -58,14 +58,23 @@ class ChameleonDevice(
         const val SLOT_COUNT = CHAMELEON_SLOT_COUNT
 
         /**
-         * Discovery pattern. Unlike the Flipper, the Chameleon advertises the
-         * same 128-bit service it serves, so no mask is needed.
+         * Discovery pattern.
          *
-         * Unverified against hardware -- no Chameleon has been tested yet.
+         * Unlike the Flipper, the Chameleon advertises the same 128-bit
+         * service it serves, so no mask is needed -- but that service is the
+         * *standard* Nordic UART Service, which is not distinctive at all. A
+         * real scan matched a device called "Camera" on it. The name hints
+         * narrow that: a NUS device whose name does not look like a Chameleon
+         * is reported as unrecognised instead.
+         *
+         * Still unverified against hardware -- no Chameleon has been connected
+         * yet, so the hints are informed by the vendor naming rather than
+         * observed.
          */
         val SCAN_TARGET: ScanTarget = ScanTarget(
             kind = DeviceKind.CHAMELEON_ULTRA,
             serviceUuid = NORDIC_UART_SERVICE,
+            nameHints = listOf("Chameleon", "CU-", "ChameleonUltra"),
         )
     }
 
