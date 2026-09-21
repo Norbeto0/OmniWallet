@@ -1,9 +1,13 @@
-# Hardware test script — M1 and M2
+# Hardware test script
 
-This app is developed in an environment with **no Bluetooth radio, no emulator
-and no Flipper**. Compilation and the JVM protocol tests are verified there;
-everything involving an actual radio can only be verified by you, on your phone,
-with your Flipper. This script is written so one session settles it.
+This app is developed in an environment with **no Bluetooth radio, no emulator,
+no Flipper and no GPS**. Compilation, lint and 147 JVM tests are verified there;
+everything involving actual hardware can only be verified by you, on your phone.
+This script is written so one session settles it.
+
+Sections 1 to 7 cover what already works and are worth a quick re-run.
+**Sections 8 to 12 are the new ones and none of it has run on a phone** — that
+is where a negative result is worth the most.
 
 Please run it in order and **export the log at the end** (button at the bottom
 of the Diagnostics screen), even if everything passes. The log carries GATT
@@ -156,16 +160,148 @@ The five correct names are `NFC`, `125 kHz RFID`, `Sub-GHz`, `Infrared`,
 your firmware builds that app as internal rather than external, which is worth
 knowing.
 
+## 8. Onboarding and the launcher icon — M9
+
+Only visible on a **clean install**, so do this one first if you are going to
+do it at all.
+
+1. Uninstall, then install. Three panes should appear.
+2. The first pane says the phone does not emulate cards itself. That sentence
+   is there because it is the single most likely misunderstanding this app can
+   produce; tell me if it reads as confusing rather than clarifying.
+3. **Grant and continue** should ask for Nearby devices and, on Android 13+,
+   notifications in the same prompt. It should then land on the **Device** tab.
+4. **Skip** should also work, and should not ask again next launch.
+5. The launcher icon should be an orange card rather than the Android default.
+
+> If you are upgrading rather than reinstalling, onboarding will not appear:
+> the flag defaults to unset, and an existing install has never written it.
+> That is expected. Uninstall first if you want to see it.
+
+## 9. Places — M7
+
+1. Long-press any card → **Place** → **Tag this place**. Android should ask for
+   location the first time. Accept.
+2. It should tag within a few seconds. **If it says it could not get a
+   location, that is the result I need to hear about** — it means the platform
+   provider returned nothing, and the log will say which providers were tried.
+3. The card should now appear under a **Nearby** section at the top of the
+   wallet, showing the place name and a distance.
+4. Rename the place in the sheet and save. The name should stick.
+5. **Walk away and come back.** Out of range (more than ~150 m) the Nearby
+   section should disappear on returning to the app; back at the place it
+   should return.
+6. **Remove** should untag it and the section should go.
+
+Coarse location instead of precise is fine and supported — the question is
+"which building", not "which doorway". If you granted approximate location,
+please say so, because the accuracy the platform reports changes how wide the
+search is.
+
+## 10. Quick surfaces — M8
+
+**None of this has ever run on a phone.** Everything below is the part I could
+not verify, so a negative result here is worth more than everything above it.
+
+### Widget
+
+1. Long-press the home screen → Widgets → OmniWallet. Add it.
+2. It should list your most-used cards. With nothing loaded yet it should say
+   so in a sentence rather than showing an empty box.
+3. **Tap a row.** Expected: the Flipper connects if needed and starts emitting,
+   and a notification appears.
+4. **Tap the same row again.** It should stop.
+5. Emulate a card from inside the app, then look at the widget: that row should
+   now read *"Emulating · tap to stop"*. If it still says "Tap to emulate",
+   the widget is not being told to redraw and that is a bug.
+
+### Quick Settings tile
+
+1. Edit your Quick Settings and add **OmniWallet**.
+2. Tap it with the phone unlocked → it should emulate your most recent card,
+   and the tile should light up with that card's name.
+3. Tap again → stop.
+4. **From the lock screen:** it should ask you to unlock first. If it emulates
+   without unlocking, stop and tell me — that is a security bug, not a rough
+   edge.
+
+### Does emulation survive backgrounding?
+
+1. Start emulating a card.
+2. Press Home. Open two or three other apps.
+3. The notification should still be there, and the Flipper should still be
+   emitting.
+4. Tap **Stop** in the notification. It should actually stop.
+
+This is the one I am least able to predict. Android's rules for foreground
+services changed repeatedly and vary by manufacturer; a Samsung or Xiaomi phone
+may kill it regardless.
+
+### The automation intent
+
+Off by default. **Check that first:**
+
+1. Without touching Settings, send the broadcast below. Expected: nothing
+   happens, and Settings → Quick access shows *"Refused an automation request:
+   automation is switched off"*.
+2. Now turn **Settings → Quick access → Allow other apps to trigger** on.
+3. Send it again. Expected: it emulates.
+
+From a computer with adb, or Tasker's "Send Intent" action:
+
+```
+adb shell am broadcast -a dev.omniwallet.action.EMULATE \
+  -n dev.omniwallet.app/.quick.AutomationReceiver \
+  --es name "Opatov_karta"
+```
+
+```
+adb shell am broadcast -a dev.omniwallet.action.STOP \
+  -n dev.omniwallet.app/.quick.AutomationReceiver
+```
+
+**A refusal saying Android blocked it is a real and expected outcome**, not a
+bug I can fix: Android 12 and later forbid starting a foreground service from
+the background, and a broadcast from another app usually has no exemption. If
+that is what you see, try again with OmniWallet recently opened and tell me
+whether that changes it. Knowing which case applies on your phone decides
+whether this feature is worth keeping.
+
+4. With the **app lock on**, every start request should be refused and the app
+   should open instead. Stop requests should still work. Please check both.
+
+## 11. Two devices — M9
+
+Only if you have a second Flipper, or can borrow one.
+
+1. Connect to the first. Disconnect.
+2. Connect to the second.
+3. The Device tab should now show **Your devices** with both listed, and
+   tapping either should connect without a scan first.
+4. **Forget** should remove one from the list.
+
+## 12. Firmware reporting — M9
+
+The Device tab should name your firmware and hardware next to the connection.
+On Momentum it should read something like *Momentum mntm-XXX · Flipper*.
+
+It should say nothing further. A line about compatibility only appears for a
+fork nobody has tested or a protocol version this app was not built against —
+and if you see one on Momentum, that is a bug, because Momentum is diffed and
+verified in `docs/PROTOCOL-NOTES.md`.
+
 ## What changed since the last build
 
 | Change | Why it matters here |
 |---|---|
-| The wallet screen exists | cards, grouped by protocol, tap to emulate |
-| Tap a running card again to stop | it used to restart, which was the wrong gesture |
-| Recursive listing | sub-GHz files in sub-folders should now appear — step 6a |
-| Bottom navigation | Wallet / Device / Settings; tapping between them should always work |
-| Library encrypted at rest | your renames migrate from the old database on first launch |
-| App lock | Settings → Security, off by default |
+| Auto-connect | reconnects to your last device on launch and on returning to the app |
+| Places (M7) | tag a card to a location, see it first when you are there |
+| Widget, tile, intent (M8) | emulate without opening the app — sections 10 |
+| Foreground service (M8) | emulation should survive you switching apps |
+| Onboarding (M9) | clean installs only — section 8 |
+| Device switcher (M9) | two Flippers without rescanning |
+| Firmware reporting (M9) | what you are running, shown on the Device tab |
+| Launcher icon (M9) | no longer the Android default |
 
 If you are upgrading, **install over the top rather than uninstalling** — a
 clean install loses the renames and favourites the migration is there to

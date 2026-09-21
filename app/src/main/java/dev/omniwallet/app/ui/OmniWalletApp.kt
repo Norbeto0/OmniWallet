@@ -88,7 +88,10 @@ private fun NavController.navigateToTab(route: String) {
  * where you were.
  */
 @Composable
-fun OmniWalletApp(shellViewModel: ShellViewModel = hiltViewModel()) {
+fun OmniWalletApp(
+    startOnDevice: Boolean = false,
+    shellViewModel: ShellViewModel = hiltViewModel(),
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
@@ -131,7 +134,7 @@ fun OmniWalletApp(shellViewModel: ShellViewModel = hiltViewModel()) {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.WALLET,
+            startDestination = if (startOnDevice) Routes.DEVICE else Routes.WALLET,
             modifier = Modifier.fillMaxSize(),
         ) {
             composable(Routes.WALLET) {

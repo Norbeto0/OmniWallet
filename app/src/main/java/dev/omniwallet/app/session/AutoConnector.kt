@@ -105,6 +105,46 @@ class AutoConnector @Inject constructor(
             }.getOrNull()
         }
 
+    /**
+     * Connect to a device the user picked from the known list.
+     *
+     * Scans first rather than connecting to the address blind: a BLE connect
+     * to a device that is switched off does not fail, it waits, and a button
+     * that appears to do nothing for thirty seconds is worse than one that
+     * says it could not find the device. The scan is the same bounded one
+     * auto-connect uses.
+     *
+     * Ignores the auto-connect setting, because this is an explicit act. It
+     * also re-arms auto-connect for this device: picking it is a statement
+     * about which device you want to come back to.
+     */
+    fun connectTo(address: String, name: String) {
+        attempt?.cancel()
+        attempt = scope.launch {
+            if (!BlePermissions.readiness(context).canScan) {
+                _status.value = Status.FAILED
+                return@launch
+            }
+
+            _status.value = Status.SEARCHING
+            val found = findRememberedDevice(address)
+            if (found == null) {
+                _status.value = Status.FAILED
+                return@launch
+            }
+
+            _status.value = Status.CONNECTING
+            _status.value = runCatching { connections.connect(found) }
+                .fold(
+                    onSuccess = {
+                        settings.rememberDevice(found.address, found.displayName)
+                        Status.IDLE
+                    },
+                    onFailure = { Status.FAILED },
+                )
+        }
+    }
+
     /** Record a successful connection as the one to come back to. */
     fun remember(device: DiscoveredDevice) {
         scope.launch { settings.rememberDevice(device.address, device.displayName) }
@@ -113,8 +153,10 @@ class AutoConnector @Inject constructor(
     /**
      * Called when the user disconnects on purpose.
      *
-     * Forgetting the device is what stops auto-connect immediately undoing the
-     * action they just took.
+     * Clearing the auto-connect target is what stops auto-connect immediately
+     * undoing the action they just took. The device stays in the known list,
+     * so it is one tap away -- respecting a disconnect does not mean
+     * pretending the device was never there.
      */
     fun onUserDisconnected() {
         attempt?.cancel()

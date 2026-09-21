@@ -46,9 +46,21 @@ data class WalletUiState(
     val message: String? = null,
     val showHidden: Boolean = false,
     val nearbyEnabled: Boolean = true,
+    /**
+     * Everything stored, before the protocol filter and the hidden filter.
+     *
+     * Kept so an empty list can say which kind of empty it is. "Nothing saved
+     * on the device yet" shown to someone with forty cards and a sub-GHz
+     * filter on is simply false.
+     */
+    val totalCount: Int = 0,
+    val hiddenCount: Int = 0,
 ) {
     val connected: Boolean get() = connectionState is ConnectionState.Ready
     val isEmpty: Boolean get() = credentials.isEmpty()
+
+    /** Empty only because something is filtering it. */
+    val emptyByFilter: Boolean get() = isEmpty && totalCount > 0
 
     /** Whether reading a location could serve any purpose at all. */
     val anyPlaceTagged: Boolean get() = credentials.any { it.place != null }
@@ -105,6 +117,8 @@ class WalletViewModel @Inject constructor(
             message = own.message ?: running.error,
             showHidden = own.showHidden,
             nearbyEnabled = prefs.nearbyRanking,
+            totalCount = stored.size,
+            hiddenCount = stored.count { it.hidden },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WalletUiState())
 

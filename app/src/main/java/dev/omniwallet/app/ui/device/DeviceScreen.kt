@@ -36,6 +36,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.omniwallet.app.session.AutoConnector
 import dev.omniwallet.core.domain.ConnectionState
+import dev.omniwallet.protocol.flipper.FirmwareCompatibility
 import dev.omniwallet.core.domain.FailureReason
 import dev.omniwallet.transport.ble.BlePermissions
 
@@ -90,17 +91,40 @@ fun DeviceScreen(
 
             if (!state.readiness.canScan) {
                 item {
-                    Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                if (!state.readiness.bluetoothEnabled) {
-                                    "Bluetooth is off"
-                                } else {
-                                    "Permission needed"
-                                },
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            if (state.readiness.missingPermissions.isNotEmpty()) {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                        ),
+                    ) {
+                        Column(
+                            Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            // Each of these states says what is wrong AND what
+                            // to do. "Permission needed" on its own leaves the
+                            // user to work out which permission and where.
+                            if (!state.readiness.bluetoothEnabled) {
+                                Text("Bluetooth is off", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "Turn Bluetooth on in Android's quick settings, then scan " +
+                                        "again. OmniWallet talks to your Flipper over Bluetooth " +
+                                        "Low Energy and cannot do anything without it.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            } else {
+                                Text(
+                                    "Nearby devices permission needed",
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Text(
+                                    "Android returns zero results from a Bluetooth scan without " +
+                                        "it, and reports no error while doing so. If the button " +
+                                        "does nothing, the permission was denied permanently — " +
+                                        "grant it in Android Settings → Apps → OmniWallet.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                                 Button(onClick = {
                                     permissionLauncher.launch(requiredPermissions().toTypedArray())
                                 }) { Text("Grant nearby devices") }
@@ -126,6 +150,78 @@ fun DeviceScreen(
             }
 
             if (state.scanning) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+
+            // The switcher. Only worth showing when there is something to
+            // switch to that is not already connected.
+            val switchable = state.knownDevices.filterNot {
+                state.connected && it.address.equals(state.connectedAddress, ignoreCase = true)
+            }
+            if (switchable.isNotEmpty()) {
+                item(key = "known-header") {
+                    Text(
+                        "Your devices",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, start = 4.dp),
+                    )
+                }
+                items(switchable, key = { "known-${it.address}" }) { known ->
+                    Card(
+                        onClick = { viewModel.connectTo(known) },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(Icons.Filled.Bluetooth, contentDescription = null)
+                            Column(Modifier.weight(1f)) {
+                                Text(known.name, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "Tap to connect · ${known.address}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(onClick = { viewModel.forget(known) }) { Text("Forget") }
+                        }
+                    }
+                }
+            }
+
+            // A scan that finished and found nothing is the single most
+            // confusing state this screen can reach, because it looks
+            // identical to one that never ran.
+            if (!state.scanning && state.scanned && state.devices.isEmpty()) {
+                item(key = "nothing-found") {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    ) {
+                        Column(
+                            Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text("Nothing found", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Check the Flipper is awake and that Bluetooth is on under its " +
+                                    "Settings → Bluetooth. A Flipper that is asleep does not " +
+                                    "advertise, so it will not appear here until you wake it.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
 
             items(state.devices, key = { it.address }) { found ->
                 Card(
@@ -182,6 +278,8 @@ private fun StatusCard(state: DeviceUiState) {
                 text = when (state.autoConnect) {
                     AutoConnector.Status.SEARCHING -> "Looking for your Flipper…"
                     AutoConnector.Status.CONNECTING -> "Reconnecting…"
+                    AutoConnector.Status.FAILED ->
+                        "Could not reach that device. Wake it and try again."
                     else -> describe(state.connectionState)
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -194,12 +292,30 @@ private fun StatusCard(state: DeviceUiState) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            state.firmware?.let {
+            state.firmware?.let { report ->
                 Text(
-                    text = it,
+                    text = listOfNotNull(report.label, report.hardwareName)
+                        .joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Only when there is something to say. A line reading "tested
+                // against this firmware" on every connection is noise that
+                // trains the user to stop reading the one time it matters.
+                if (report.confidence != FirmwareCompatibility.Confidence.VERIFIED) {
+                    Text(
+                        text = report.summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (report.confidence ==
+                            FirmwareCompatibility.Confidence.INCOMPATIBLE
+                        ) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
         }
     }

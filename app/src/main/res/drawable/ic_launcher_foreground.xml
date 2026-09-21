@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground. The 108dp canvas is mostly safe-area padding: only
+  the middle 72dp is guaranteed visible once a launcher applies its mask, so
+  the artwork sits well inside that and the path coordinates are offset to
+  match.
+
+  A card with contactless waves, because that is what the app is about: the
+  credentials, not the device that emits them.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Card body, rounded, 62x44 centred on the 108 canvas. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M27,34 L69,34 A6,6 0 0 1 75,40 L75,68 A6,6 0 0 1 69,74 L27,74 A6,6 0 0 1 21,68 L21,40 A6,6 0 0 1 27,34 Z" />
+
+    <!-- Magnetic stripe, knocked out in the background orange. -->
+    <path
+        android:fillColor="#FF8200"
+        android:pathData="M21,44 L75,44 L75,52 L21,52 Z" />
+
+    <!-- Contactless arcs, off the card's right edge. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M81,47 A10,10 0 0 1 81,61" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M87,42 A18,18 0 0 1 87,66" />
+</vector>

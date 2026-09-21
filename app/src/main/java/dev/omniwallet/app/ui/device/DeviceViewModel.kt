@@ -8,6 +8,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.omniwallet.app.session.AutoConnector
 import dev.omniwallet.app.session.DeviceConnectionManager
 import dev.omniwallet.core.domain.ConnectionState
+import dev.omniwallet.app.ui.settings.KnownDevice
+import dev.omniwallet.app.ui.settings.SettingsStore
+import dev.omniwallet.protocol.flipper.FirmwareCompatibility
 import dev.omniwallet.transport.ble.BlePermissions
 import dev.omniwallet.transport.ble.BleScanner
 import dev.omniwallet.transport.ble.DiscoveredDevice
@@ -29,8 +32,18 @@ data class DeviceUiState(
     val devices: List<DiscoveredDevice> = emptyList(),
     val connectionState: ConnectionState = ConnectionState.Disconnected,
     val connectedName: String? = null,
-    val firmware: String? = null,
+    val firmware: FirmwareCompatibility.Report? = null,
     val autoConnect: AutoConnector.Status = AutoConnector.Status.IDLE,
+    /** Devices connected to before, most recent first. */
+    val knownDevices: List<KnownDevice> = emptyList(),
+    val connectedAddress: String? = null,
+    /**
+     * True once a scan has run in this session.
+     *
+     * Distinguishes "found nothing" from "has not looked", which are
+     * indistinguishable on screen and mean completely different things.
+     */
+    val scanned: Boolean = false,
 ) {
     val connected: Boolean get() = connectionState is ConnectionState.Ready
 }
@@ -41,6 +54,7 @@ class DeviceViewModel @Inject constructor(
     private val scanner: BleScanner,
     private val connections: DeviceConnectionManager,
     private val autoConnector: AutoConnector,
+    private val settings: SettingsStore,
 ) : ViewModel() {
 
     private val local = MutableStateFlow(DeviceUiState())
@@ -51,8 +65,19 @@ class DeviceViewModel @Inject constructor(
         connections.connectionState,
         connections.connectedName,
         autoConnector.status,
-    ) { own, connection, name, auto ->
-        own.copy(connectionState = connection, connectedName = name, autoConnect = auto)
+        settings.settings,
+    ) { own, connection, name, auto, prefs ->
+        own.copy(
+            connectionState = connection,
+            connectedName = name,
+            autoConnect = auto,
+            knownDevices = prefs.knownDevices,
+            connectedAddress = if (connection is ConnectionState.Ready) {
+                prefs.lastDeviceAddress
+            } else {
+                null
+            },
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DeviceUiState())
 
     init {
@@ -68,7 +93,7 @@ class DeviceViewModel @Inject constructor(
         if (!local.value.readiness.canScan) return
 
         scanJob?.cancel()
-        local.update { it.copy(scanning = true, devices = emptyList()) }
+        local.update { it.copy(scanning = true, scanned = true, devices = emptyList()) }
         scanJob = viewModelScope.launch {
             runCatching {
                 scanner.scan(filtered = true).collect { found ->
@@ -105,12 +130,32 @@ class DeviceViewModel @Inject constructor(
             runCatching {
                 connections.readyDevice()?.let { ready ->
                     val info = (ready as? dev.omniwallet.device.flipper.FlipperDevice)?.deviceInfo()
-                    val fork = info?.get("firmware_origin_fork") ?: "Official"
-                    val version = info?.get("firmware_version").orEmpty()
-                    local.update { it.copy(firmware = "$fork $version".trim()) }
+                    // Parsed by the protocol module rather than picked apart
+                    // here: which device_info keys exist is a firmware fact,
+                    // and assuming one that does not (there is no
+                    // `firmware_origin`) is how this was wrong before.
+                    local.update {
+                        it.copy(firmware = FirmwareCompatibility.inspect(info.orEmpty()))
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Switch to a device the user has used before, without a rescan first.
+     *
+     * The whole point of the known list: with two Flippers, changing between
+     * them should be one tap rather than a scan and a hunt through whatever
+     * else is advertising nearby.
+     */
+    fun connectTo(device: KnownDevice) {
+        stopScan()
+        autoConnector.connectTo(device.address, device.name)
+    }
+
+    fun forget(device: KnownDevice) {
+        viewModelScope.launch { settings.removeKnownDevice(device.address) }
     }
 
     fun disconnect() {

@@ -20,6 +20,7 @@ import dev.omniwallet.app.session.AutoConnector
 import dev.omniwallet.app.ui.OmniWalletApp
 import dev.omniwallet.app.ui.lock.BiometricAuthenticator
 import dev.omniwallet.app.ui.lock.LockScreen
+import dev.omniwallet.app.ui.onboarding.OnboardingScreen
 import dev.omniwallet.app.ui.settings.AppSettings
 import dev.omniwallet.app.ui.settings.SettingsStore
 import dev.omniwallet.app.ui.theme.OmniWalletTheme
@@ -67,20 +68,34 @@ class MainActivity : FragmentActivity() {
             val locked by appLock.locked.collectAsState()
             var lockError by remember { mutableStateOf<String?>(null) }
 
+            // Tracked here rather than read straight from settings so that
+            // finishing onboarding takes effect immediately, without waiting
+            // for the DataStore write to come back round.
+            var onboarded by remember { mutableStateOf<Boolean?>(null) }
+            val showOnboarding = onboarded?.not() ?: !current.onboardingComplete
+
             OmniWalletTheme(
                 themeMode = current.themeMode,
                 dynamicColor = current.dynamicColor,
             ) {
-                if (locked) {
-                    // Prompt as soon as the lock appears, so the common case is
-                    // a single glance rather than a tap then a glance.
-                    LaunchedEffect(Unit) { promptForUnlock { lockError = it } }
-                    LockScreen(
-                        onUnlock = { promptForUnlock { lockError = it } },
-                        error = lockError,
-                    )
-                } else {
-                    OmniWalletApp()
+                when {
+                    locked -> {
+                        // Prompt as soon as the lock appears, so the common
+                        // case is a single glance rather than a tap then a
+                        // glance.
+                        LaunchedEffect(Unit) { promptForUnlock { lockError = it } }
+                        LockScreen(
+                            onUnlock = { promptForUnlock { lockError = it } },
+                            error = lockError,
+                        )
+                    }
+
+                    showOnboarding -> OnboardingScreen(onFinished = { onboarded = true })
+
+                    // Straight to the Device tab: the app does nothing useful
+                    // without hardware, so the first thing after onboarding
+                    // should be the screen that finds it.
+                    else -> OmniWalletApp(startOnDevice = onboarded == true)
                 }
             }
         }

@@ -15,6 +15,15 @@ import javax.inject.Singleton
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
+/**
+ * A device the user has connected to before.
+ *
+ * Kept so a second Flipper can be switched to without a rescan. Names are the
+ * advertised ones, which Momentum lets the user change, so the address is the
+ * identity and the name is only ever a label.
+ */
+data class KnownDevice(val address: String, val name: String)
+
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = false,
@@ -35,6 +44,9 @@ data class AppSettings(
      * every install ships an attack surface nobody requested.
      */
     val automationEnabled: Boolean = false,
+    val onboardingComplete: Boolean = false,
+    /** Most recently connected first. */
+    val knownDevices: List<KnownDevice> = emptyList(),
 ) {
     companion object {
         /**
@@ -61,6 +73,8 @@ class SettingsStore @Inject constructor(
     private val lastNameKey = stringPreferencesKey("last_device_name")
     private val nearbyKey = booleanPreferencesKey("nearby_ranking")
     private val automationKey = booleanPreferencesKey("automation_enabled")
+    private val onboardingKey = booleanPreferencesKey("onboarding_complete")
+    private val knownDevicesKey = stringPreferencesKey("known_devices")
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
@@ -83,6 +97,8 @@ class SettingsStore @Inject constructor(
             // to someone who has already opted in by using the feature.
             nearbyRanking = prefs[nearbyKey] ?: true,
             automationEnabled = prefs[automationKey] ?: false,
+            onboardingComplete = prefs[onboardingKey] ?: false,
+            knownDevices = decodeKnownDevices(prefs[knownDevicesKey]),
         )
     }
 
@@ -110,10 +126,36 @@ class SettingsStore @Inject constructor(
         context.dataStore.edit { it[autoConnectKey] = enabled }
     }
 
+    /**
+     * Record a successful connection, and move it to the front of the list.
+     *
+     * Deduplicated on address rather than name: a renamed Flipper is the same
+     * Flipper, and two entries for one device would be a switcher that lies
+     * about how many devices you own.
+     */
     suspend fun rememberDevice(address: String, name: String) {
-        context.dataStore.edit {
-            it[lastAddressKey] = address
-            it[lastNameKey] = name
+        context.dataStore.edit { prefs ->
+            prefs[lastAddressKey] = address
+            prefs[lastNameKey] = name
+
+            val existing = decodeKnownDevices(prefs[knownDevicesKey])
+                .filterNot { it.address.equals(address, ignoreCase = true) }
+            prefs[knownDevicesKey] =
+                encodeKnownDevices(listOf(KnownDevice(address, name)) + existing)
+        }
+    }
+
+    /** Drop a device from the switcher entirely. */
+    suspend fun removeKnownDevice(address: String) {
+        context.dataStore.edit { prefs ->
+            prefs[knownDevicesKey] = encodeKnownDevices(
+                decodeKnownDevices(prefs[knownDevicesKey])
+                    .filterNot { it.address.equals(address, ignoreCase = true) },
+            )
+            if (prefs[lastAddressKey].equals(address, ignoreCase = true)) {
+                prefs.remove(lastAddressKey)
+                prefs.remove(lastNameKey)
+            }
         }
     }
 
@@ -125,10 +167,66 @@ class SettingsStore @Inject constructor(
         context.dataStore.edit { it[automationKey] = enabled }
     }
 
+    suspend fun setOnboardingComplete(complete: Boolean) {
+        context.dataStore.edit { it[onboardingKey] = complete }
+    }
+
+    /**
+     * Stop auto-connecting, without forgetting the device exists.
+     *
+     * Called when the user disconnects on purpose. The entry stays in
+     * [AppSettings.knownDevices] so it can be reconnected with one tap --
+     * respecting the disconnect does not mean pretending the device was never
+     * there.
+     */
     suspend fun forgetDevice() {
         context.dataStore.edit {
             it.remove(lastAddressKey)
             it.remove(lastNameKey)
         }
+    }
+
+    companion object {
+        /**
+         * How many devices the switcher remembers.
+         *
+         * Small deliberately: this is for someone with a Flipper and maybe a
+         * second one, not a fleet. A list that grows without bound turns into
+         * a graveyard of devices borrowed once.
+         */
+        const val MAX_KNOWN_DEVICES = 5
+
+        private const val RECORD = "\n"
+        private const val FIELD = "\t"
+
+        /**
+         * Preferences DataStore has no list type, so this is a flat string.
+         *
+         * A separator a name could contain would corrupt the whole list rather
+         * than one entry, so tab and newline are stripped from names on the
+         * way in. Bluetooth names containing either are pathological, and
+         * losing the whitespace beats losing the list.
+         */
+        internal fun encodeKnownDevices(devices: List<KnownDevice>): String =
+            devices.take(MAX_KNOWN_DEVICES).joinToString(RECORD) { device ->
+                val name = device.name.replace(RECORD, " ").replace(FIELD, " ")
+                "${device.address}$FIELD$name"
+            }
+
+        internal fun decodeKnownDevices(raw: String?): List<KnownDevice> =
+            raw?.split(RECORD)
+                ?.mapNotNull { line ->
+                    // Anything unparseable is dropped rather than guessed at.
+                    // A half-read entry would render as a nameless device the
+                    // user cannot identify or connect to.
+                    val parts = line.split(FIELD)
+                    if (parts.size != 2 || parts[0].isBlank()) {
+                        null
+                    } else {
+                        KnownDevice(parts[0], parts[1].ifBlank { parts[0] })
+                    }
+                }
+                ?.take(MAX_KNOWN_DEVICES)
+                .orEmpty()
     }
 }

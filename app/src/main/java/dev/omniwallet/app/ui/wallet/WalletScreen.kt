@@ -32,6 +32,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
@@ -156,7 +157,18 @@ fun WalletScreen(
             }
 
             if (state.isEmpty) {
-                item { EmptyState(connected = state.connected, onOpenDevice = onOpenDevice) }
+                item {
+                    EmptyState(
+                        connected = state.connected,
+                        emptyByFilter = state.emptyByFilter,
+                        filtered = state.protocolFilter != null,
+                        hiddenCount = state.hiddenCount,
+                        showHidden = state.showHidden,
+                        onClearFilter = { viewModel.setFilter(null) },
+                        onShowHidden = viewModel::toggleShowHidden,
+                        onOpenDevice = onOpenDevice,
+                    )
+                }
             }
 
             if (state.nearby.isNotEmpty()) {
@@ -311,10 +323,61 @@ private fun ProtocolFilterRow(selected: Protocol?, onSelect: (Protocol?) -> Unit
     }
 }
 
+/**
+ * Four different empties, which used to be one.
+ *
+ * An empty list has more than one cause and they need different sentences.
+ * Telling someone with forty cards and a sub-GHz filter on that they have
+ * "nothing saved on the device yet" is not a rough edge, it is a false
+ * statement, and it sends them to the Device tab to fix a problem they do not
+ * have.
+ */
 @Composable
-private fun EmptyState(connected: Boolean, onOpenDevice: () -> Unit) {
+private fun EmptyState(
+    connected: Boolean,
+    emptyByFilter: Boolean,
+    filtered: Boolean,
+    hiddenCount: Int,
+    showHidden: Boolean,
+    onClearFilter: () -> Unit,
+    onShowHidden: () -> Unit,
+    onOpenDevice: () -> Unit,
+) {
+    val everythingHidden = emptyByFilter && !filtered && !showHidden && hiddenCount > 0
+
+    val title: String
+    val body: String
+    val action: Pair<String, () -> Unit>?
+
+    when {
+        everythingHidden -> {
+            title = "Everything here is hidden"
+            body = "You have $hiddenCount hidden ${if (hiddenCount == 1) "card" else "cards"} " +
+                "and nothing else. They are still saved."
+            action = "Show hidden" to onShowHidden
+        }
+
+        emptyByFilter -> {
+            title = "No cards match this filter"
+            body = "Your other cards are still here — this filter just does not match any of them."
+            action = "Show all" to onClearFilter
+        }
+
+        connected -> {
+            title = "Nothing saved on the device yet"
+            body = "Save a card on the Flipper and it appears here on the next refresh. " +
+                "OmniWallet only reads — it never writes to your device."
+            action = null
+        }
+
+        else -> {
+            title = "Connect a device"
+            body = "Your cards live on the Flipper. Connect it to read the library."
+            action = "Go to Device" to onOpenDevice
+        }
+    }
+
     Card(
-        onClick = onOpenDevice,
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -326,19 +389,15 @@ private fun EmptyState(connected: Boolean, onOpenDevice: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
             Text(
-                text = if (connected) "Nothing saved on the device yet" else "Connect a device",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = if (connected) {
-                    "Cards you save on the Flipper appear here automatically."
-                } else {
-                    "Your cards live on the Flipper. Connect it to read the library."
-                },
+                text = body,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            action?.let { (label, onClick) ->
+                TextButton(onClick = onClick) { Text(label) }
+            }
         }
     }
 }

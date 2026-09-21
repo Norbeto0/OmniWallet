@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Orange70 from the app's own palette, which is the Flipper's orange. The
+      icon keeps it regardless of the wallpaper-colour setting: dynamic theming
+      changes what the app looks like inside, not what it is called on the home
+      screen.
+    -->
+    <color name="ic_launcher_background">#FF8200</color>
+</resources>
