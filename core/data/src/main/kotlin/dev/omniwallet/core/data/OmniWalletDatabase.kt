@@ -12,6 +12,6 @@ abstract class OmniWalletDatabase : RoomDatabase() {
     abstract fun credentialDao(): CredentialDao
 
     companion object {
-        const val NAME = "omniwallet.db"
+        const val NAME = "omniwallet-secure.db"
     }
 }
