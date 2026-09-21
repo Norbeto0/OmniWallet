@@ -12,6 +12,16 @@
       Below 31: the legacy pair, plus ACCESS_FINE_LOCATION. Without that
       permission the platform silently returns zero scan results, which is the
       classic way a BLE app appears broken while looking correct.
+
+      Since M7, location is also requested for its own sake, on every API level:
+      the nearby ranking compares the phone's position against places the user
+      tagged by hand. That is why ACCESS_FINE_LOCATION no longer carries
+      maxSdkVersion 30. Capped, it was granted only on old phones, and the
+      ranking would have failed silently on every modern one.
+
+      Foreground only. There is deliberately no ACCESS_BACKGROUND_LOCATION and
+      no geofence registration: a position is read while someone is looking at
+      the app, and never otherwise.
     -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
@@ -22,8 +32,8 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 

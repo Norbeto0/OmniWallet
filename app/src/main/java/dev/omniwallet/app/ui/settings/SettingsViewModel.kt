@@ -47,4 +47,8 @@ class SettingsViewModel @Inject constructor(
     fun setAutoConnect(enabled: Boolean) {
         viewModelScope.launch { store.setAutoConnect(enabled) }
     }
+
+    fun setNearbyRanking(enabled: Boolean) {
+        viewModelScope.launch { store.setNearbyRanking(enabled) }
+    }
 }

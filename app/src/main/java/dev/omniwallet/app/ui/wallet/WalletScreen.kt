@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDisabled
@@ -43,10 +45,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.omniwallet.app.session.LocationSource
 import dev.omniwallet.app.ui.theme.LocalIsDarkTheme
 import dev.omniwallet.app.ui.theme.style
+import dev.omniwallet.core.domain.CredentialId
 import dev.omniwallet.core.domain.Protocol
+import dev.omniwallet.core.domain.ProximityRanking
 import dev.omniwallet.core.domain.StoredCredential
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +64,25 @@ fun WalletScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    var detailsFor by remember { mutableStateOf<StoredCredential?>(null) }
+
+    // The id, not the credential. Holding the object would freeze the sheet on
+    // the values it had when it opened, so tagging a place from inside it would
+    // appear to do nothing until the sheet was closed and reopened.
+    var detailsForId by remember { mutableStateOf<CredentialId?>(null) }
+    val detailsFor = detailsForId?.let { id -> state.credentials.firstOrNull { it.id == id } }
+
+    // Asking is the same call whether or not the permission is already held --
+    // the contract returns immediately when it is -- so there is one path here
+    // rather than a granted branch and an ungranted one. A refusal falls
+    // through to tagHere, which reports it; the view model owns that message so
+    // the two ways of reaching it cannot drift apart.
+    var pendingTag by remember { mutableStateOf<StoredCredential?>(null) }
+    val locationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        pendingTag?.let(viewModel::tagHere)
+        pendingTag = null
+    }
 
     val appBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(appBarState)
@@ -67,6 +91,15 @@ fun WalletScreen(
     // without anyone having to think about it.
     LaunchedEffect(state.connected) {
         if (state.connected) viewModel.sync()
+    }
+
+    // On resume rather than on first composition: coming back to the app after
+    // walking somewhere is exactly the case this feature is for. The view model
+    // short-circuits when nothing is tagged, so this costs nothing until the
+    // user opts in by tagging something.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refreshLocation()
+        onPauseOrDispose { }
     }
 
     LaunchedEffect(state.message) {
@@ -126,6 +159,26 @@ fun WalletScreen(
                 item { EmptyState(connected = state.connected, onOpenDevice = onOpenDevice) }
             }
 
+            if (state.nearby.isNotEmpty()) {
+                item(key = "header-nearby") { SectionHeader("Nearby") }
+                items(state.nearby, key = { "nearby-${it.credential.id.value}" }) { near ->
+                    val credential = near.credential
+                    CredentialCard(
+                        credential = credential,
+                        enabled = state.connected && credential.present,
+                        emulating = state.nowEmulating?.credential?.id == credential.id,
+                        onEmulate = { viewModel.toggle(credential) },
+                        onDetails = { detailsForId = credential.id },
+                        onToggleFavourite = {
+                            viewModel.setFavourite(credential.id, !credential.favourite)
+                        },
+                        subtitleOverride = credential.place?.let { place ->
+                            "${place.label} · ${ProximityRanking.formatDistance(near.distanceMetres)}"
+                        },
+                    )
+                }
+            }
+
             if (state.favourites.isNotEmpty()) {
                 item { SectionHeader("Favourites") }
                 items(state.favourites, key = { it.id.value }) { credential ->
@@ -134,7 +187,7 @@ fun WalletScreen(
                         enabled = state.connected && credential.present,
                         emulating = state.nowEmulating?.credential?.id == credential.id,
                         onEmulate = { viewModel.toggle(credential) },
-                        onDetails = { detailsFor = credential },
+                        onDetails = { detailsForId = credential.id },
                         onToggleFavourite = { viewModel.setFavourite(credential.id, false) },
                     )
                 }
@@ -148,7 +201,7 @@ fun WalletScreen(
                         enabled = state.connected && credential.present,
                         emulating = state.nowEmulating?.credential?.id == credential.id,
                         onEmulate = { viewModel.toggle(credential) },
-                        onDetails = { detailsFor = credential },
+                        onDetails = { detailsForId = credential.id },
                         onToggleFavourite = { viewModel.setFavourite(credential.id, true) },
                     )
                 }
@@ -159,10 +212,17 @@ fun WalletScreen(
     detailsFor?.let { credential ->
         CredentialDetailsSheet(
             credential = credential,
-            onDismiss = { detailsFor = null },
+            locating = state.locating,
+            onDismiss = { detailsForId = null },
             onRename = { viewModel.rename(credential.id, it) },
             onToggleFavourite = { viewModel.setFavourite(credential.id, !credential.favourite) },
             onToggleHidden = { viewModel.setHidden(credential.id, !credential.hidden) },
+            onTagHere = {
+                pendingTag = credential
+                locationPermission.launch(LocationSource.PERMISSIONS.toTypedArray())
+            },
+            onRenamePlace = { viewModel.renamePlace(credential, it) },
+            onClearPlace = { viewModel.clearPlace(credential.id) },
         )
     }
 }

@@ -30,7 +30,15 @@ internal object LegacyDatabaseMigration {
      * again next launch.
      */
     fun migrate(context: Context, target: OmniWalletDatabase) {
+        // The schema migrations matter here too, and are easy to forget. The
+        // legacy file was written at whatever version was current when the user
+        // last ran the old build, so it can be *behind* the entity classes. Omit
+        // these and Room throws "a migration from 1 to 2 was required but not
+        // found", the catch below swallows it as an unreadable database, and
+        // the upgrade quietly discards exactly the renames and favourites this
+        // whole class exists to rescue.
         val legacy = Room.databaseBuilder(context, OmniWalletDatabase::class.java, LEGACY_NAME)
+            .addMigrations(*OmniWalletDatabase.MIGRATIONS)
             .allowMainThreadQueries()
             .build()
 

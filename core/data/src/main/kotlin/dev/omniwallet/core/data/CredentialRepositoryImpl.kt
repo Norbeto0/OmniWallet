@@ -4,6 +4,7 @@ import dev.omniwallet.core.domain.CredentialId
 import dev.omniwallet.core.domain.CredentialMerge
 import dev.omniwallet.core.domain.CredentialRepository
 import dev.omniwallet.core.domain.DeviceKind
+import dev.omniwallet.core.domain.Place
 import dev.omniwallet.core.domain.RemoteCredential
 import dev.omniwallet.core.domain.StoredCredential
 import kotlinx.coroutines.flow.Flow
@@ -52,4 +53,14 @@ class CredentialRepositoryImpl @Inject constructor(
 
     override suspend fun markUsed(id: CredentialId, atMillis: Long) =
         dao.setLastUsed(id.value, atMillis)
+
+    override suspend fun setPlace(id: CredentialId, place: Place?) =
+        // A blank label is treated as "untag", matching rename: an unnamed
+        // place cannot be shown, so storing one would create an entry the user
+        // can see the effects of but not find.
+        if (place == null || place.label.isBlank()) {
+            dao.setPlace(id.value, null, null, null)
+        } else {
+            dao.setPlace(id.value, place.label.trim(), place.latitude, place.longitude)
+        }
 }

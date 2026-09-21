@@ -118,6 +118,28 @@ fun SettingsScreen(
                 }
             }
 
+            SettingsSection("Nearby") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Suggest cards by place", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Cards you tag with a place are listed first when you are there. " +
+                                "Your position is read only while the app is open, never in the " +
+                                "background, and never leaves this phone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.nearbyRanking,
+                        onCheckedChange = viewModel::setNearbyRanking,
+                    )
+                }
+            }
+
             SettingsSection("Security") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),

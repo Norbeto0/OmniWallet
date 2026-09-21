@@ -39,6 +39,7 @@ object DatabaseModule {
 
         val database = Room.databaseBuilder(context, OmniWalletDatabase::class.java, OmniWalletDatabase.NAME)
             .openHelperFactory(SupportOpenHelperFactory(key.getOrCreate()))
+            .addMigrations(*OmniWalletDatabase.MIGRATIONS)
             .build()
 
         // One-time upgrade from the M3 plaintext database. Checked by file

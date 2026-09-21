@@ -6,6 +6,7 @@ import androidx.room.PrimaryKey
 import dev.omniwallet.core.domain.CredentialId
 import dev.omniwallet.core.domain.CredentialLocation
 import dev.omniwallet.core.domain.DeviceKind
+import dev.omniwallet.core.domain.Place
 import dev.omniwallet.core.domain.Protocol
 import dev.omniwallet.core.domain.StoredCredential
 
@@ -14,15 +15,16 @@ import dev.omniwallet.core.domain.StoredCredential
  *
  * Columns are split by ownership on purpose: everything from `discoveredName`
  * down to `lastSeenAtMillis` is the device's and gets overwritten on each scan,
- * while `customName`, `favourite`, `hidden` and `lastUsedAtMillis` are the
- * user's and are never touched by discovery.
+ * while `customName`, `favourite`, `hidden`, `lastUsedAtMillis` and the three
+ * `place_*` columns are the user's and are never touched by discovery.
  *
  * Location is flattened into a type/value pair rather than serialised, so it
  * stays queryable and legible in a database dump.
  *
- * Note on scope: this table holds names, paths and preferences -- not card
- * contents. Encryption at rest arrives in M4, and the schema is arranged so
- * swapping in SQLCipher's open helper is the only change required.
+ * Note on scope: this table holds names, paths, preferences and -- since v2 --
+ * an optional tagged coordinate. Not card contents; those stay on the device.
+ * The coordinate is the most sensitive column here, which is part of why the
+ * database is opened through SQLCipher.
  */
 @Entity(tableName = "credentials")
 data class CredentialEntity(
@@ -43,6 +45,13 @@ data class CredentialEntity(
     val favourite: Boolean,
     val hidden: Boolean,
     @ColumnInfo(name = "last_used_at") val lastUsedAtMillis: Long?,
+
+    // Added in schema v2. All three are null together or set together; the
+    // label is what decides, since a place with no name is not one the UI can
+    // show and a coordinate alone would be untaggable and unremovable.
+    @ColumnInfo(name = "place_label") val placeLabel: String? = null,
+    @ColumnInfo(name = "place_lat") val placeLatitude: Double? = null,
+    @ColumnInfo(name = "place_lon") val placeLongitude: Double? = null,
 ) {
     companion object {
         const val LOCATION_FLIPPER_FILE = "flipper_file"
@@ -67,6 +76,14 @@ fun CredentialEntity.toDomain(): StoredCredential = StoredCredential(
     favourite = favourite,
     hidden = hidden,
     lastUsedAtMillis = lastUsedAtMillis,
+    // Guarded rather than assumed: a row written by a future version, or one
+    // left half-populated by a crash mid-write, becomes "no place" instead of
+    // a credential pinned to the Gulf of Guinea at 0,0.
+    place = placeLabel?.takeIf { it.isNotBlank() }?.let { label ->
+        val lat = placeLatitude
+        val lon = placeLongitude
+        if (lat == null || lon == null) null else Place(label, lat, lon)
+    },
 )
 
 fun StoredCredential.toEntity(): CredentialEntity = CredentialEntity(
@@ -89,4 +106,7 @@ fun StoredCredential.toEntity(): CredentialEntity = CredentialEntity(
     favourite = favourite,
     hidden = hidden,
     lastUsedAtMillis = lastUsedAtMillis,
+    placeLabel = place?.label,
+    placeLatitude = place?.latitude,
+    placeLongitude = place?.longitude,
 )

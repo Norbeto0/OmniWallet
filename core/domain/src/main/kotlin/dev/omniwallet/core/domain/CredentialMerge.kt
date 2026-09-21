@@ -4,8 +4,8 @@ package dev.omniwallet.core.domain
  * A library entry: what the device reported, plus what the user made of it.
  *
  * The split is the whole point. [discoveredName] and [sizeBytes] belong to the
- * device and are refreshed on every scan; [customName], [favourite], [hidden]
- * and [lastUsedAtMillis] belong to the user and must survive every scan.
+ * device and are refreshed on every scan; [customName], [favourite], [hidden],
+ * [lastUsedAtMillis] and [place] belong to the user and must survive every scan.
  */
 data class StoredCredential(
     val id: CredentialId,
@@ -31,6 +31,12 @@ data class StoredCredential(
     val favourite: Boolean = false,
     val hidden: Boolean = false,
     val lastUsedAtMillis: Long? = null,
+
+    /**
+     * Where the user says this gets used, if they have said. Tagged by hand,
+     * never inferred -- see [Place].
+     */
+    val place: Place? = null,
 ) {
     /** What to show: the user's name if they set one, else the device's. */
     val displayName: String get() = customName?.takeIf { it.isNotBlank() } ?: discoveredName

@@ -50,6 +50,13 @@ fun CredentialCard(
     onDetails: () -> Unit,
     onToggleFavourite: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Replaces the usual second line. Used by the Nearby section to say how far
+     * away the card's place is, which is the only reason it is in that section
+     * at all -- a suggestion that does not say why it is being made is just an
+     * unexplained reordering.
+     */
+    subtitleOverride: String? = null,
 ) {
     val dark = LocalIsDarkTheme.current
     val style = credential.protocol.style()
@@ -103,7 +110,10 @@ fun CredentialCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = credential.subtitle(enabled, emulating),
+                    // The override loses to a live state: "emulating now" and
+                    // "connect to use" are things the user needs, and distance
+                    // is a nicety.
+                    text = credential.subtitle(enabled, emulating, subtitleOverride),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -127,12 +137,17 @@ fun CredentialCard(
 }
 
 /** The one line under the name: state first, then protocol and recency. */
-private fun StoredCredential.subtitle(enabled: Boolean, emulating: Boolean): String {
+private fun StoredCredential.subtitle(
+    enabled: Boolean,
+    emulating: Boolean,
+    override: String?,
+): String {
     val style = protocol.style()
     return when {
         emulating -> "Emulating now · tap to stop"
         !present -> "${style.label} · not on the device"
         !enabled -> "${style.label} · connect to use"
+        override != null -> override
         else -> buildString {
             append(style.label)
             lastUsedAtMillis?.let { append(" · ").append(relativeTime(it)) }

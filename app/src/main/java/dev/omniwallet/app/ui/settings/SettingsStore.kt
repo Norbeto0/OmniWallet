@@ -26,6 +26,7 @@ data class AppSettings(
     /** Address of the device to reconnect to, or null if none is remembered. */
     val lastDeviceAddress: String? = null,
     val lastDeviceName: String? = null,
+    val nearbyRanking: Boolean = true,
 ) {
     companion object {
         /**
@@ -50,6 +51,7 @@ class SettingsStore @Inject constructor(
     private val autoConnectKey = booleanPreferencesKey("auto_connect")
     private val lastAddressKey = stringPreferencesKey("last_device_address")
     private val lastNameKey = stringPreferencesKey("last_device_name")
+    private val nearbyKey = booleanPreferencesKey("nearby_ranking")
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
@@ -67,6 +69,10 @@ class SettingsStore @Inject constructor(
             autoConnect = prefs[autoConnectKey] ?: true,
             lastDeviceAddress = prefs[lastAddressKey],
             lastDeviceName = prefs[lastNameKey],
+            // On by default, but inert: nothing reads a location until the
+            // user has tagged at least one card, so this switch only matters
+            // to someone who has already opted in by using the feature.
+            nearbyRanking = prefs[nearbyKey] ?: true,
         )
     }
 
@@ -99,6 +105,10 @@ class SettingsStore @Inject constructor(
             it[lastAddressKey] = address
             it[lastNameKey] = name
         }
+    }
+
+    suspend fun setNearbyRanking(enabled: Boolean) {
+        context.dataStore.edit { it[nearbyKey] = enabled }
     }
 
     suspend fun forgetDevice() {

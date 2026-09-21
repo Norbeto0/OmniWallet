@@ -43,4 +43,17 @@ interface CredentialDao {
 
     @Query("UPDATE credentials SET last_used_at = :atMillis WHERE id = :id")
     suspend fun setLastUsed(id: String, atMillis: Long)
+
+    /**
+     * Set or clear the tagged place.
+     *
+     * One statement writing all three columns, so a place can never be left
+     * half-written -- a label with no coordinate, or a coordinate with no way
+     * to name or remove it.
+     */
+    @Query(
+        "UPDATE credentials SET place_label = :label, place_lat = :latitude, " +
+            "place_lon = :longitude WHERE id = :id",
+    )
+    suspend fun setPlace(id: String, label: String?, latitude: Double?, longitude: Double?)
 }

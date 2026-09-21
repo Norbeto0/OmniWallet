@@ -6,8 +6,8 @@ import org.junit.Test
 
 /**
  * The invariant these defend: **a device scan must never destroy anything the
- * user did.** Renames, favourites and usage history belong to the user; only
- * the discovered fields belong to the device.
+ * user did.** Renames, favourites, usage history and tagged places belong to
+ * the user; only the discovered fields belong to the device.
  */
 class CredentialMergeTest {
 
@@ -26,6 +26,7 @@ class CredentialMergeTest {
         lastUsed: Long? = null,
         hidden: Boolean = false,
         present: Boolean = true,
+        place: Place? = null,
     ) = StoredCredential(
         id = CredentialMerge.idFor(DeviceKind.FLIPPER_ZERO, CredentialLocation.FlipperFile(path)),
         deviceKind = DeviceKind.FLIPPER_ZERO,
@@ -38,6 +39,7 @@ class CredentialMergeTest {
         favourite = favourite,
         hidden = hidden,
         lastUsedAtMillis = lastUsed,
+        place = place,
     )
 
     @Test
@@ -65,6 +67,7 @@ class CredentialMergeTest {
                 favourite = true,
                 lastUsed = 4_242,
                 hidden = true,
+                place = Place("Office", 51.5007, -0.1246),
             ),
         )
 
@@ -80,6 +83,10 @@ class CredentialMergeTest {
         merged.lastUsedAtMillis shouldBe 4_242
         merged.hidden shouldBe true
         merged.displayName shouldBe "Office door"
+        // Added with M7 and belonging to the same group: a scan that dropped
+        // the tagged place would silently empty the Nearby section, with no
+        // error and nothing to point at.
+        merged.place shouldBe Place("Office", 51.5007, -0.1246)
 
         // ...while device-owned fields do refresh.
         merged.lastSeenAtMillis shouldBe 9_000

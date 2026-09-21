@@ -30,6 +30,14 @@ interface CredentialRepository {
 
     /** Record that this credential was just emulated. */
     suspend fun markUsed(id: CredentialId, atMillis: Long = System.currentTimeMillis())
+
+    /**
+     * Tag -- or untag, with null -- where this credential gets used.
+     *
+     * Always an explicit act by the user. Nothing in this app writes a place
+     * as a side effect of emulating somewhere; see [Place] for why.
+     */
+    suspend fun setPlace(id: CredentialId, place: Place?)
 }
 
 /**
