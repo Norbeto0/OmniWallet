@@ -85,29 +85,69 @@ With the state at `ready`:
 3. **List files** → counts the saved items across `/ext/nfc`, `/ext/lfrfid`,
    `/ext/subghz`, `/ext/infrared`, `/ext/ibutton`.
 
-## 6. Emulation — including the two fixes
+## 6. The wallet
 
-1. In the file list, tap **Emulate** on a saved NFC or RFID item.
-   **Expected:** the Flipper switches to that app with your card loaded and
-   starts emitting straight away.
-2. **Now tap Emulate on a *different* card, without disconnecting.**
-   **Expected:** it switches cleanly to the second card.
-   This used to fail every time with `ERROR_APP_SYSTEM_LOCKED`, because the
-   Flipper runs one app at a time and nothing closed the first one. The app now
-   closes the running app before starting the next.
-3. Tap **Stop emulation**, and **watch the Flipper's screen**.
-   **Expected:** it actually leaves the app and returns to its menu.
-   This is the other fix worth your attention. `AppExitRequest` cannot close an
-   app that was launched with a file path — it answers `ERROR_APP_NOT_RUNNING`
-   and the app keeps running — so the app previously reported "stopped" while
-   the Flipper carried on emulating. It now backs out with BACK presses and
-   checks the loader lock, and will report an error rather than claim success if
-   the app will not close.
+Everything below happens on the **Wallet** tab, which is now the main screen.
+Section 7 is only for when something here fails.
 
-## 7. Manual app start — only if step 6 failed
+1. Connect on the **Device** tab, then switch to **Wallet**. It reads the
+   library automatically on connect.
+2. Tap a saved NFC card. The Flipper should switch to that card and start
+   emitting straight away, and a bar should appear above the navigation bar
+   showing what is running and for how long.
+3. **Tap the same card again.** It should *stop*. The card's icon turns into a
+   stop square while it runs, so the second tap is advertised rather than
+   something you have to guess at.
+4. Tap a **different** card without disconnecting. It should switch cleanly.
+5. Long-press a card, rename it, and save. Then hit refresh. **The rename must
+   survive.** Kill the app and reopen it; it must still survive.
 
-If **Emulate** returned an error, use the manual card to isolate whether it is
-the app name or the path:
+## 6a. Protocols nobody has tested yet
+
+This is the point of this build. Only NFC has ever been confirmed on hardware.
+Sub-GHz, iButton and 125 kHz RFID go through exactly the same code path and
+*should* already work, but "should" is doing a lot of work in that sentence.
+
+**First, before tapping anything: how many cards are in the list?**
+
+The previous build found three files, because listing was not recursive and
+most of the library sat one folder down. Listing now descends, so files inside
+`Tesla/`, `remote/` and similar should appear.
+
+- More cards than before, including sub-GHz ones → recursion works.
+- **Still three** → recursion is not working, and that is the finding. Stop
+  here and send the log; the rest of this section will not tell us much.
+
+Then, one at a time:
+
+| Protocol | What to tap | Expected |
+|---|---|---|
+| **Sub-GHz** | a card from `Tesla/` or `remote/` | the Flipper transmits; tap again to stop |
+| **iButton** | any saved key, if you have one | behaves exactly like NFC |
+| **125 kHz RFID** | any saved fob, if you have one | behaves exactly like NFC |
+
+For each: did the Flipper actually *do* the thing, or did it just open the app?
+That distinction is the whole result — the app reporting success only means the
+device accepted the command.
+
+**Infrared — where a negative result is the useful one.**
+
+Tap `Samsung.ir` and watch the Flipper. I expect the remote to open and
+**nothing to be transmitted**, because a `.ir` file is a whole remote of named
+buttons rather than a single transmission, and nothing yet presses a button.
+
+If that is what happens, it confirms the design for the IR work: the Infrared
+app has to be started in RPC mode, the file loaded separately, and a named
+button pressed — a different flow from every other protocol, forced by the same
+firmware constraint that broke the stop button earlier.
+
+If it *does* transmit something, my reading of the firmware is wrong, and
+knowing that early saves building the wrong thing.
+
+## 7. Manual app start — only if something in 6 or 6a failed
+
+If tapping a card returned an error, use the manual control on the
+**Diagnostics** screen to isolate whether it is the app name or the path:
 
 - App name `NFC`, path `/ext/nfc/<your file>.nfc` → **Start app**
 
@@ -118,18 +158,25 @@ knowing.
 
 ## What changed since the last build
 
-Five fixes, four of them driven by your log:
-
-| Fix | Symptom before |
+| Change | Why it matters here |
 |---|---|
-| Scan filter uses the advertised 16-bit UUID | filtered scan found nothing |
-| Close the running app before starting another | second card never worked |
-| Stop backs out with BACK and verifies the lock | claimed "stopped" while still emulating |
-| RPC status read from byte 0 | `rpcActive` always false |
-| `firmware_origin_fork` key | header printed `firmware=?` |
+| The wallet screen exists | cards, grouped by protocol, tap to emulate |
+| Tap a running card again to stop | it used to restart, which was the wrong gesture |
+| Recursive listing | sub-GHz files in sub-folders should now appear — step 6a |
+| Bottom navigation | Wallet / Device / Settings; tapping between them should always work |
+| Library encrypted at rest | your renames migrate from the old database on first launch |
+| App lock | Settings → Security, off by default |
+
+If you are upgrading, **install over the top rather than uninstalling** — a
+clean install loses the renames and favourites the migration is there to
+preserve.
 
 ## Finally
 
-Tap **Export log** and send the file. Useful either way: if everything passed
-it confirms the MTU, credit behaviour and firmware on real hardware; if
-something failed it contains the reason.
+Go to **Device → Diagnostics**, tap **Export log**, and send the file.
+
+Useful either way. If everything passed it records the MTU, credit behaviour
+and firmware on real hardware. If something failed it carries the actual
+`CommandStatus` the Flipper returned, which is worth considerably more than a
+description of what went wrong — every protocol bug found in this project so
+far was identified from a status code in one of these logs.
