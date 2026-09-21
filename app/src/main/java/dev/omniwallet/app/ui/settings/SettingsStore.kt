@@ -22,6 +22,10 @@ data class AppSettings(
     /** How long the app may sit in the background before re-locking. */
     val lockGraceMillis: Long = DEFAULT_LOCK_GRACE_MILLIS,
     val blockScreenshots: Boolean = false,
+    val autoConnect: Boolean = true,
+    /** Address of the device to reconnect to, or null if none is remembered. */
+    val lastDeviceAddress: String? = null,
+    val lastDeviceName: String? = null,
 ) {
     companion object {
         /**
@@ -43,6 +47,9 @@ class SettingsStore @Inject constructor(
     private val lockKey = booleanPreferencesKey("app_lock_enabled")
     private val graceKey = longPreferencesKey("lock_grace_millis")
     private val screenshotKey = booleanPreferencesKey("block_screenshots")
+    private val autoConnectKey = booleanPreferencesKey("auto_connect")
+    private val lastAddressKey = stringPreferencesKey("last_device_address")
+    private val lastNameKey = stringPreferencesKey("last_device_name")
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
@@ -54,6 +61,12 @@ class SettingsStore @Inject constructor(
             appLockEnabled = prefs[lockKey] ?: false,
             lockGraceMillis = prefs[graceKey] ?: AppSettings.DEFAULT_LOCK_GRACE_MILLIS,
             blockScreenshots = prefs[screenshotKey] ?: false,
+            // On by default: the app is useless without a device, so making
+            // people reconnect by hand every launch is friction for its own
+            // sake.
+            autoConnect = prefs[autoConnectKey] ?: true,
+            lastDeviceAddress = prefs[lastAddressKey],
+            lastDeviceName = prefs[lastNameKey],
         )
     }
 
@@ -75,5 +88,23 @@ class SettingsStore @Inject constructor(
 
     suspend fun setBlockScreenshots(enabled: Boolean) {
         context.dataStore.edit { it[screenshotKey] = enabled }
+    }
+
+    suspend fun setAutoConnect(enabled: Boolean) {
+        context.dataStore.edit { it[autoConnectKey] = enabled }
+    }
+
+    suspend fun rememberDevice(address: String, name: String) {
+        context.dataStore.edit {
+            it[lastAddressKey] = address
+            it[lastNameKey] = name
+        }
+    }
+
+    suspend fun forgetDevice() {
+        context.dataStore.edit {
+            it.remove(lastAddressKey)
+            it.remove(lastNameKey)
+        }
     }
 }

@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.omniwallet.app.session.AutoConnector
 import dev.omniwallet.core.domain.ConnectionState
 import dev.omniwallet.core.domain.FailureReason
 import dev.omniwallet.transport.ble.BlePermissions
@@ -160,7 +161,11 @@ private fun StatusCard(state: DeviceUiState) {
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                text = describe(state.connectionState),
+                text = when (state.autoConnect) {
+                    AutoConnector.Status.SEARCHING -> "Looking for your Flipper…"
+                    AutoConnector.Status.CONNECTING -> "Reconnecting…"
+                    else -> describe(state.connectionState)
+                },
                 style = MaterialTheme.typography.bodySmall,
             )
             if (pairing) {

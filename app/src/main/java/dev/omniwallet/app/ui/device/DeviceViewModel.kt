@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.omniwallet.app.session.AutoConnector
 import dev.omniwallet.app.session.DeviceConnectionManager
 import dev.omniwallet.core.domain.ConnectionState
 import dev.omniwallet.transport.ble.BlePermissions
@@ -29,6 +30,7 @@ data class DeviceUiState(
     val connectionState: ConnectionState = ConnectionState.Disconnected,
     val connectedName: String? = null,
     val firmware: String? = null,
+    val autoConnect: AutoConnector.Status = AutoConnector.Status.IDLE,
 ) {
     val connected: Boolean get() = connectionState is ConnectionState.Ready
 }
@@ -38,6 +40,7 @@ class DeviceViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val scanner: BleScanner,
     private val connections: DeviceConnectionManager,
+    private val autoConnector: AutoConnector,
 ) : ViewModel() {
 
     private val local = MutableStateFlow(DeviceUiState())
@@ -47,8 +50,9 @@ class DeviceViewModel @Inject constructor(
         local,
         connections.connectionState,
         connections.connectedName,
-    ) { own, connection, name ->
-        own.copy(connectionState = connection, connectedName = name)
+        autoConnector.status,
+    ) { own, connection, name, auto ->
+        own.copy(connectionState = connection, connectedName = name, autoConnect = auto)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DeviceUiState())
 
     init {
@@ -97,6 +101,7 @@ class DeviceViewModel @Inject constructor(
         stopScan()
         viewModelScope.launch {
             runCatching { connections.connect(device) }
+                .onSuccess { autoConnector.remember(device) }
             runCatching {
                 connections.readyDevice()?.let { ready ->
                     val info = (ready as? dev.omniwallet.device.flipper.FlipperDevice)?.deviceInfo()
@@ -109,6 +114,9 @@ class DeviceViewModel @Inject constructor(
     }
 
     fun disconnect() {
+        // Deliberate, so stop auto-connecting -- otherwise the app would undo
+        // the action the moment it was taken.
+        autoConnector.onUserDisconnected()
         viewModelScope.launch {
             connections.disconnect()
             local.update { it.copy(firmware = null) }

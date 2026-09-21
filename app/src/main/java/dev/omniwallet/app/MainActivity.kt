@@ -16,6 +16,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.omniwallet.app.session.AppLock
+import dev.omniwallet.app.session.AutoConnector
 import dev.omniwallet.app.ui.OmniWalletApp
 import dev.omniwallet.app.ui.lock.BiometricAuthenticator
 import dev.omniwallet.app.ui.lock.LockScreen
@@ -37,6 +38,9 @@ class MainActivity : FragmentActivity() {
 
     @Inject
     lateinit var appLock: AppLock
+
+    @Inject
+    lateinit var autoConnector: AutoConnector
 
     private var settings: AppSettings = AppSettings()
 
@@ -122,5 +126,8 @@ class MainActivity : FragmentActivity() {
             lockEnabled = settings.appLockEnabled,
             graceMillis = settings.lockGraceMillis,
         )
+        // Reconnect on every entry to the foreground, not only cold start: the
+        // common case is coming back to a Flipper that has since woken up.
+        autoConnector.tryReconnect()
     }
 }

@@ -43,4 +43,8 @@ class SettingsViewModel @Inject constructor(
     fun setBlockScreenshots(enabled: Boolean) {
         viewModelScope.launch { store.setBlockScreenshots(enabled) }
     }
+
+    fun setAutoConnect(enabled: Boolean) {
+        viewModelScope.launch { store.setAutoConnect(enabled) }
+    }
 }

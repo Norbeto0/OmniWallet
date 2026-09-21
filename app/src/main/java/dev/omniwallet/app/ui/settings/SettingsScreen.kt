@@ -97,6 +97,27 @@ fun SettingsScreen(
                 }
             }
 
+            SettingsSection("Device") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Reconnect automatically", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            settings.lastDeviceName?.let { "Reconnects to $it when it is in range." }
+                                ?: "Reconnects to the last device you used when it is in range.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.autoConnect,
+                        onCheckedChange = viewModel::setAutoConnect,
+                    )
+                }
+            }
+
             SettingsSection("Security") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
