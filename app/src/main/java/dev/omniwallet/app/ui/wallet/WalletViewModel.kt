@@ -92,8 +92,9 @@ class WalletViewModel @Inject constructor(
         }
     }
 
-    fun emulate(credential: StoredCredential) {
-        viewModelScope.launch { emulation.emulate(credential) }
+    /** Tap a card to start it; tap the running one again to stop. */
+    fun toggle(credential: StoredCredential) {
+        viewModelScope.launch { emulation.toggle(credential) }
     }
 
     fun stop() {

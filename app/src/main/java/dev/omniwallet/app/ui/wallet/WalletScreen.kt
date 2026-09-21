@@ -133,7 +133,7 @@ fun WalletScreen(
                         credential = credential,
                         enabled = state.connected && credential.present,
                         emulating = state.nowEmulating?.credential?.id == credential.id,
-                        onEmulate = { viewModel.emulate(credential) },
+                        onEmulate = { viewModel.toggle(credential) },
                         onDetails = { detailsFor = credential },
                         onToggleFavourite = { viewModel.setFavourite(credential.id, false) },
                     )
@@ -147,7 +147,7 @@ fun WalletScreen(
                         credential = credential,
                         enabled = state.connected && credential.present,
                         emulating = state.nowEmulating?.credential?.id == credential.id,
-                        onEmulate = { viewModel.emulate(credential) },
+                        onEmulate = { viewModel.toggle(credential) },
                         onDetails = { detailsFor = credential },
                         onToggleFavourite = { viewModel.setFavourite(credential.id, true) },
                     )

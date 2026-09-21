@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -83,8 +84,11 @@ fun CredentialCard(
                     .background(style.container(dark), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
+                // While running, the protocol glyph becomes a stop square, so
+                // the card visibly advertises what a second tap will do. A
+                // control that changes state should look like it changed.
                 Icon(
-                    imageVector = style.icon,
+                    imageVector = if (emulating) Icons.Filled.Stop else style.icon,
                     contentDescription = null,
                     tint = style.color(dark),
                     modifier = Modifier.size(22.dp),
@@ -126,7 +130,7 @@ fun CredentialCard(
 private fun StoredCredential.subtitle(enabled: Boolean, emulating: Boolean): String {
     val style = protocol.style()
     return when {
-        emulating -> "Emulating now"
+        emulating -> "Emulating now · tap to stop"
         !present -> "${style.label} · not on the device"
         !enabled -> "${style.label} · connect to use"
         else -> buildString {

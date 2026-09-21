@@ -58,6 +58,21 @@ class EmulationController @Inject constructor(
     }
 
     /**
+     * Tap to start, tap again to stop.
+     *
+     * The card in the list is the control, the way a track row in a player is
+     * its own play/pause button. Tapping the card that is already running and
+     * having it restart -- which is what it used to do -- is a small betrayal
+     * of that: the obvious gesture did the one thing you did not mean.
+     */
+    suspend fun toggle(credential: StoredCredential): Boolean =
+        if (_nowEmulating.value?.credential?.id == credential.id) {
+            stop()
+        } else {
+            emulate(credential)
+        }
+
+    /**
      * Start emitting [credential], replacing anything already running.
      *
      * Switching cards is one action from here; the device layer handles closing
